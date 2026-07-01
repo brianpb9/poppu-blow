@@ -86,6 +86,45 @@ function roundRect(c, x, y, w, h, r) {
 }
 
 /* ============================================================================
+   PRODUCTION ART ASSETS — real illustrated PNGs (gpt_image_2), clean alpha.
+   Objects, Poppu, and backgrounds are drawn via drawImage() of these assets;
+   no procedural shape drawing for them. Physics/audio/wind are untouched.
+   ========================================================================== */
+const IMG = {};
+const IMG_NAMES = [
+  'poppu-idle', 'poppu-excited', 'poppu-celebrate',
+  'dandelion-full', 'dandelion-seed',
+  'butterfly-pink', 'butterfly-yellow', 'butterfly-purple', 'flower-set',
+  'balloon-red', 'balloon-blue', 'balloon-yellow', 'balloon-pink',
+  'cloud-puffy', 'feather-white', 'bubble',
+  'magic-orb-purple', 'magic-orb-cyan', 'magic-orb-gold',
+  'bg-meadow', 'bg-sky', 'bg-magic'
+];
+for (const n of IMG_NAMES) { const im = new Image(); im.src = 'assets/' + n + '.png'; IMG[n] = im; }
+function imgReady(name) { const i = IMG[name]; return !!(i && i.complete && i.naturalWidth > 0); }
+
+// Draw a sprite centered on the current transform origin. dispH = display height
+// in local px; width follows the source aspect. Optional vertical offset yOff.
+function drawImg(name, dispH, yOff) {
+  const im = IMG[name];
+  if (!im || !im.complete || !im.naturalWidth) return false;
+  const w = dispH * (im.naturalWidth / im.naturalHeight);
+  ctx.drawImage(im, -w / 2, -dispH / 2 + (yOff || 0), w, dispH);
+  return true;
+}
+
+// Draw a full-screen background image, scaled to COVER (like background-size: cover).
+function drawBGCover(name) {
+  const im = IMG[name];
+  if (!im || !im.complete || !im.naturalWidth) { ctx.fillStyle = '#bfe6f5'; ctx.fillRect(0, 0, W, H); return false; }
+  const ir = im.naturalWidth / im.naturalHeight, sr = W / H;
+  let w, h;
+  if (sr > ir) { w = W; h = W / ir; } else { h = H; w = H * ir; }
+  ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
+  return true;
+}
+
+/* ============================================================================
    AUDIO — Web Audio API, all synthesized
    ========================================================================== */
 const Audio = (function () {
@@ -443,6 +482,7 @@ const kindConfig = {
   dandelion: {
     init(o) {
       o.mass = 2.4; o.drag = 0.9; o.wobSpeed = 1.4; o.size = 46;
+      o.imgName = 'dandelion-full';
       o.seeds = [];
       const n = 26;
       for (let i = 0; i < n; i++) {
@@ -473,71 +513,12 @@ const kindConfig = {
       o.rot = Math.sin(o.wob) * 0.12;   // sway upright, never tumble
     },
     draw(o) {
+      // real illustrated dandelion sprite; fade the head as seeds are blown away
       const remaining = o.seeds.filter(s => !s.gone).length;
-      const sh = o.stemH;
-      // --- stem: tapered, curved, light->dark green gradient ---
-      const sg = ctx.createLinearGradient(0, 0, 0, sh);
-      sg.addColorStop(0, '#b6e29a'); sg.addColorStop(0.5, '#7fc36a'); sg.addColorStop(1, '#4c9846');
-      ctx.fillStyle = sg;
-      ctx.beginPath();
-      ctx.moveTo(1.7, 5);
-      ctx.quadraticCurveTo(5.5, sh * 0.55, 2.4, sh);            // right edge, natural bow
-      ctx.quadraticCurveTo(1.2, sh + 1.5, -0.2, sh);
-      ctx.quadraticCurveTo(2.4, sh * 0.55, -1.7, 5);            // left edge back up
-      ctx.closePath(); ctx.fill();
-      // --- two small side leaves ---
-      for (const [ly, dir] of [[sh * 0.44, 1], [sh * 0.68, -1]]) {
-        ctx.save(); ctx.translate(2, ly); ctx.rotate(dir * 0.7);
-        const lg = ctx.createLinearGradient(0, 0, dir * 15, 0);
-        lg.addColorStop(0, '#8ed07d'); lg.addColorStop(1, '#4f9a48');
-        ctx.fillStyle = lg;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.quadraticCurveTo(dir * 8, -3.5, dir * 15, 0);
-        ctx.quadraticCurveTo(dir * 8, 3.5, 0, 0);
-        ctx.fill();
-        ctx.restore();
-      }
-      if (remaining > 0) {
-        // soft glow halo behind the seed head
-        const hg = ctx.createRadialGradient(0, 0, 3, 0, 0, 42);
-        hg.addColorStop(0, 'rgba(255,255,255,0.45)');
-        hg.addColorStop(0.6, 'rgba(255,252,240,0.14)');
-        hg.addColorStop(1, 'rgba(255,252,240,0)');
-        ctx.fillStyle = hg;
-        ctx.beginPath(); ctx.arc(0, 0, 42, 0, TAU); ctx.fill();
-        // --- individual filaments: thin curved line + pappus tuft ---
-        for (const s of o.seeds) {
-          if (s.gone) continue;
-          const wob = Math.sin(o.wob + s.a * 3) * 1.6;
-          const rr = s.r + wob;
-          const ex = Math.cos(s.a) * rr, ey = Math.sin(s.a) * rr;
-          const mx = Math.cos(s.a + 0.14) * rr * 0.55, my = Math.sin(s.a + 0.14) * rr * 0.55;
-          ctx.strokeStyle = 'rgba(248,251,255,0.62)';
-          ctx.lineWidth = 0.85; ctx.lineCap = 'round';
-          ctx.beginPath(); ctx.moveTo(Math.cos(s.a) * 6, Math.sin(s.a) * 6);
-          ctx.quadraticCurveTo(mx, my, ex, ey); ctx.stroke();
-          // teardrop pappus at tip (soft radial)
-          const pg = ctx.createRadialGradient(ex, ey, 0, ex, ey, 5);
-          pg.addColorStop(0, 'rgba(255,255,255,0.95)');
-          pg.addColorStop(0.55, 'rgba(255,250,238,0.5)');
-          pg.addColorStop(1, 'rgba(255,250,238,0)');
-          ctx.fillStyle = pg;
-          ctx.beginPath(); ctx.arc(ex, ey, 5, 0, TAU); ctx.fill();
-        }
-        // warm glowing center
-        const cg = ctx.createRadialGradient(-1.5, -1.5, 0, 0, 0, 9);
-        cg.addColorStop(0, '#fff0c0'); cg.addColorStop(0.55, '#f4c96a'); cg.addColorStop(1, '#d18f36');
-        ctx.fillStyle = cg;
-        ctx.beginPath(); ctx.arc(0, 0, 6.5, 0, TAU); ctx.fill();
-      } else {
-        // bare domed receptacle with seed sockets
-        const cg = ctx.createRadialGradient(-1.5, -2, 0, 0, 0, 9);
-        cg.addColorStop(0, '#ecdcac'); cg.addColorStop(1, '#b0925a');
-        ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(0, 0, 7.5, 0, TAU); ctx.fill();
-        ctx.fillStyle = 'rgba(120,92,50,0.42)';
-        for (let k = 0; k < 9; k++) { const a = (k / 9) * TAU; ctx.beginPath(); ctx.arc(Math.cos(a) * 3.8, Math.sin(a) * 3.8, 1, 0, TAU); ctx.fill(); }
-      }
+      const frac = remaining / o.seedCount;
+      ctx.globalAlpha = 0.55 + 0.45 * frac;
+      drawImg('dandelion-full', 150, 44);
+      ctx.globalAlpha = 1;
     },
     cleared(o) { return o.seeds.every(s => s.gone); }
   },
@@ -546,7 +527,8 @@ const kindConfig = {
   butterfly: {
     init(o) {
       o.mass = 1.1; o.drag = 0.92; o.wobSpeed = 9; o.size = 34;
-      o.color = pick(['#ff9ec7', '#ffd166', '#c39bff', '#8be0d4', '#ff8f6b']);
+      const bv = pick([['butterfly-pink', '#ff9ec7'], ['butterfly-yellow', '#ffd166'], ['butterfly-purple', '#c39bff']]);
+      o.imgName = bv[0]; o.color = bv[1];
       o.flap = 0; o.fear = 0;
     },
     onWind(o, power) {
@@ -569,70 +551,10 @@ const kindConfig = {
       o.rot = clamp(o.vx * 0.001, -0.4, 0.4);
     },
     draw(o) {
-      const flap = Math.abs(Math.sin(o.flap)) * 0.72 + 0.28;
-      const c = o.color;
-      const cLight = lighten(c, 62);
-      const cDeep = darken(c, 16);
-      ctx.save();
-      // wings (mirrored, flap by scaling x)
-      for (const dir of [-1, 1]) {
-        ctx.save();
-        ctx.scale(dir * flap, 1);
-        softShadow('rgba(90,80,120,0.22)', 5, 1, 2);
-        // ---- upper wing (larger) — hand-drawn irregular blob ----
-        ctx.beginPath();
-        ctx.moveTo(2, -3);
-        ctx.bezierCurveTo(6, -22, 22, -27, 25, -13);
-        ctx.bezierCurveTo(27, -4, 20, 1, 9, 1);
-        ctx.quadraticCurveTo(4, 1, 2, -3);
-        ctx.closePath();
-        let ug = ctx.createRadialGradient(15, -12, 1, 15, -12, 22);
-        ug.addColorStop(0, cLight); ug.addColorStop(0.55, c); ug.addColorStop(1, cDeep);
-        ctx.fillStyle = ug; ctx.fill();
-        clearShadow();
-        // ---- lower wing (smaller) ----
-        ctx.beginPath();
-        ctx.moveTo(3, 2);
-        ctx.bezierCurveTo(16, 4, 20, 16, 12, 20);
-        ctx.bezierCurveTo(5, 23, 1, 16, 2, 6);
-        ctx.quadraticCurveTo(2, 3, 3, 2);
-        ctx.closePath();
-        let lg = ctx.createRadialGradient(10, 11, 1, 10, 11, 16);
-        lg.addColorStop(0, cLight); lg.addColorStop(0.6, c); lg.addColorStop(1, cDeep);
-        ctx.fillStyle = lg; ctx.fill();
-        // ---- faint vein lines ----
-        ctx.strokeStyle = rgba(cDeep, 0.28); ctx.lineWidth = 0.7;
-        for (const [ex, ey] of [[22, -16], [24, -9], [18, -3]]) {
-          ctx.beginPath(); ctx.moveTo(4, -4); ctx.quadraticCurveTo(ex * 0.55, ey * 0.7, ex, ey); ctx.stroke();
-        }
-        ctx.beginPath(); ctx.moveTo(4, 4); ctx.quadraticCurveTo(10, 12, 13, 17); ctx.stroke();
-        // ---- decorative spots on upper wing ----
-        ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.beginPath(); ctx.ellipse(17, -15, 3.4, 4.2, -0.3, 0, TAU); ctx.fill();
-        ctx.fillStyle = rgba(cDeep, 0.55);
-        ctx.beginPath(); ctx.arc(17, -15, 1.7, 0, TAU); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.beginPath(); ctx.ellipse(11, 13, 2, 2.6, 0.3, 0, TAU); ctx.fill();
-        ctx.restore();
-      }
-      // ---- body: elongated, darker, with gradient ----
-      const bg = ctx.createLinearGradient(-3, 0, 3, 0);
-      bg.addColorStop(0, '#4a3d63'); bg.addColorStop(0.5, '#6b5a8a'); bg.addColorStop(1, '#4a3d63');
-      ctx.fillStyle = bg;
-      ctx.beginPath(); ctx.ellipse(0, 2, 2.8, 13, 0, 0, TAU); ctx.fill();
-      // segment shine
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.beginPath(); ctx.ellipse(-0.8, 0, 1, 11, 0, 0, TAU); ctx.fill();
-      // head
-      ctx.fillStyle = '#4a3d63';
-      ctx.beginPath(); ctx.arc(0, -13, 3.2, 0, TAU); ctx.fill();
-      // antennae with tiny club tips
-      ctx.strokeStyle = '#4a3d63'; ctx.lineWidth = 1.2; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(-1, -14); ctx.quadraticCurveTo(-5, -20, -6.5, -23); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(1, -14); ctx.quadraticCurveTo(5, -20, 6.5, -23); ctx.stroke();
-      ctx.fillStyle = '#4a3d63';
-      ctx.beginPath(); ctx.arc(-6.5, -23, 1.4, 0, TAU); ctx.fill();
-      ctx.beginPath(); ctx.arc(6.5, -23, 1.4, 0, TAU); ctx.fill();
+      // real illustrated butterfly sprite; wing-flap via subtle horizontal squash
+      const flap = Math.abs(Math.sin(o.flap)) * 0.32 + 0.68;
+      ctx.save(); ctx.scale(flap, 1);
+      drawImg(o.imgName || 'butterfly-pink', 74);
       ctx.restore();
     },
     cleared() { return false; }
@@ -669,7 +591,8 @@ const kindConfig = {
   balloon: {
     init(o) {
       o.mass = 3.2; o.drag = 0.93; o.wobSpeed = 2.2; o.size = 52;
-      o.color = pick(['#ff8fb8', '#8ec5ff', '#ffd166', '#a0e6a0', '#c39bff', '#ff9e6b']);
+      const bv = pick([['balloon-red', '#ff6b6b'], ['balloon-blue', '#8ec5ff'], ['balloon-yellow', '#ffd166'], ['balloon-pink', '#ff8fb8']]);
+      o.imgName = bv[0]; o.color = bv[1];
       o.squish = 0; o.buoy = rand(6, 14);
     },
     onWind(o, power) {
@@ -683,42 +606,11 @@ const kindConfig = {
       o.vy = clamp(o.vy, -140, 200);
     },
     draw(o) {
-      const sq = 1 - o.squish * 0.16;
-      const c = o.color;
-      const w = 46 * sq, h = 56 / sq;
-      const bottom = h * 0.5;
-      // --- string: wavy cubic bezier ---
-      ctx.strokeStyle = 'rgba(140,130,115,0.65)'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(0, bottom + 3);
-      ctx.bezierCurveTo(Math.sin(o.wob) * 10, bottom + 22, Math.sin(o.wob + 1.4) * -8, bottom + 40, Math.sin(o.wob + 2) * 4, bottom + 58);
-      ctx.stroke();
-      // --- balloon body: teardrop silhouette ---
-      ctx.beginPath();
-      ctx.moveTo(0, -h * 0.5);
-      ctx.bezierCurveTo(w * 0.62, -h * 0.48, w * 0.6, h * 0.16, w * 0.17, h * 0.42);
-      ctx.quadraticCurveTo(w * 0.05, h * 0.5, 0, bottom);
-      ctx.quadraticCurveTo(-w * 0.05, h * 0.5, -w * 0.17, h * 0.42);
-      ctx.bezierCurveTo(-w * 0.6, h * 0.16, -w * 0.62, -h * 0.48, 0, -h * 0.5);
-      ctx.closePath();
-      const g = ctx.createRadialGradient(-w * 0.22, -h * 0.28, 3, w * 0.08, h * 0.06, w * 0.85);
-      g.addColorStop(0, lighten(c, 60));
-      g.addColorStop(0.45, c);
-      g.addColorStop(1, darken(c, 22));
-      softShadow(rgba(c, 0.3), 9, 0, 3);
-      ctx.fillStyle = g; ctx.fill();
-      clearShadow();
-      // subtle darker rim at the bottom
-      ctx.strokeStyle = rgba(darken(c, 30), 0.35); ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(0, h * 0.28, w * 0.28, 0.5, Math.PI - 0.5); ctx.stroke();
-      // --- knot ---
-      ctx.fillStyle = darken(c, 24);
-      ctx.beginPath(); ctx.moveTo(-4.5, bottom - 1); ctx.quadraticCurveTo(0, bottom + 6, 4.5, bottom - 1);
-      ctx.quadraticCurveTo(0, bottom + 1, -4.5, bottom - 1); ctx.fill();
-      // --- specular highlight ---
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.beginPath(); ctx.ellipse(-w * 0.2, -h * 0.24, w * 0.11, h * 0.17, -0.4, 0, TAU); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.beginPath(); ctx.ellipse(-w * 0.24, -h * 0.3, w * 0.04, h * 0.06, -0.4, 0, TAU); ctx.fill();
+      // real illustrated balloon sprite; keep the squish reaction as a subtle squash
+      const sq = 1 - o.squish * 0.12;
+      ctx.save(); ctx.scale(sq, 1 / sq);
+      drawImg(o.imgName || 'balloon-red', 132, 24);
+      ctx.restore();
     },
     cleared() { return false; }
   },
@@ -727,6 +619,7 @@ const kindConfig = {
   cloud: {
     init(o) {
       o.mass = 7; o.drag = 0.9; o.wobSpeed = 0.8; o.size = 90;
+      o.imgName = 'cloud-puffy';
       o.puffs = [];
       const n = randi(4, 6);
       for (let i = 0; i < n; i++) {
@@ -744,32 +637,8 @@ const kindConfig = {
       o.vr = 0; o.rot = 0;
     },
     draw(o) {
-      const baseY = 16;
-      // merged silhouette: many arcs + flat base lobe in ONE path (union, no seams)
-      const build = (oy, inflate) => {
-        ctx.beginPath();
-        for (const p of o.puffs) { ctx.moveTo(p.x + p.r + inflate, p.y + oy); ctx.arc(p.x, p.y + oy, p.r + inflate, 0, TAU); }
-        ctx.moveTo(56 + inflate, baseY + oy); ctx.ellipse(0, baseY + oy, 56 + inflate, 20 + inflate, 0, 0, TAU);
-      };
-      // --- body with soft drop shadow + vertical gradient ---
-      softShadow('rgba(120,140,180,0.45)', 16, 0, 9);
-      build(0, 0);
-      const vg = ctx.createLinearGradient(0, -42, 0, 40);
-      vg.addColorStop(0, '#ffffff'); vg.addColorStop(0.55, '#f1f5ff'); vg.addColorStop(1, '#cbd8ef');
-      ctx.fillStyle = vg; ctx.fill();
-      clearShadow();
-      // --- clip to silhouette for interior shading ---
-      ctx.save();
-      build(0, 0); ctx.clip();
-      // upper inner highlight (bright bloom near top-center)
-      const hg = ctx.createRadialGradient(-8, -26, 2, -8, -26, 62);
-      hg.addColorStop(0, 'rgba(255,255,255,0.95)'); hg.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = hg; ctx.fillRect(-70, -55, 140, 90);
-      // soft underside shadow band
-      const ug = ctx.createLinearGradient(0, 8, 0, 40);
-      ug.addColorStop(0, 'rgba(150,170,205,0)'); ug.addColorStop(1, 'rgba(150,170,205,0.5)');
-      ctx.fillStyle = ug; ctx.fillRect(-70, 8, 140, 40);
-      ctx.restore();
+      // real illustrated cloud sprite
+      drawImg('cloud-puffy', 122);
     },
     cleared() { return false; }
   },
@@ -778,6 +647,7 @@ const kindConfig = {
   feather: {
     init(o) {
       o.mass = 0.6; o.drag = 0.95; o.wobSpeed = 3; o.size = 40;
+      o.imgName = 'feather-white';
       o.color = pick(['#ffd6e8', '#d6ecff', '#fff0c8', '#e2d6ff', '#d6ffe8']);
       o.twirl = rand(0, TAU);
     },
@@ -793,40 +663,9 @@ const kindConfig = {
       o.vr *= 0.96;
     },
     draw(o) {
+      // real illustrated feather sprite; keep the gentle twirl
       ctx.rotate(Math.sin(o.twirl) * 0.4);
-      const c = o.color;
-      const tip = -26, base = 24, bend = 2.5;
-      const spineX = t => bend * t;
-      const edge = mixHex(c, '#ffffff', 0.45);
-      // --- soft opaque vane silhouette (single leaf shape) ---
-      ctx.beginPath();
-      ctx.moveTo(0, tip);
-      ctx.bezierCurveTo(12, tip + 9, 12.5, 9, bend, base);
-      ctx.bezierCurveTo(-12.5, 9, -12, tip + 9, 0, tip);
-      ctx.closePath();
-      const g = ctx.createLinearGradient(-12, 0, 12, 0);
-      g.addColorStop(0, edge); g.addColorStop(0.5, c); g.addColorStop(1, edge);
-      softShadow('rgba(120,120,150,0.16)', 5, 1, 2);
-      ctx.fillStyle = g; ctx.fill();
-      clearShadow();
-      // --- barbs: light, sparse, following the vane ---
-      ctx.strokeStyle = rgba(mixHex(c, '#ffffff', 0.55), 0.5); ctx.lineWidth = 0.8; ctx.lineCap = 'round';
-      const N = 14;
-      for (let i = 1; i < N; i++) {
-        const t = i / N;
-        const sy = lerp(tip + 3, base - 3, t);
-        const sx = spineX(t);
-        const hw = Math.sin(t * Math.PI) * 11 * (1 - t * 0.2);
-        for (const dir of [-1, 1]) {
-          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + dir * hw, sy - hw * 0.3); ctx.stroke();
-        }
-      }
-      // --- tapered quill/spine ---
-      ctx.strokeStyle = rgba(darken(c, 16), 0.85); ctx.lineCap = 'round';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(0, tip); ctx.quadraticCurveTo(bend, (tip + base) / 2, bend, base); ctx.stroke();
-      ctx.lineWidth = 2.6;
-      ctx.beginPath(); ctx.moveTo(spineX(0.6), lerp(tip, base, 0.6)); ctx.quadraticCurveTo(bend, base * 0.82, bend, base + 3); ctx.stroke();
+      drawImg('feather-white', 92);
     },
     cleared() { return false; }
   },
@@ -835,6 +674,7 @@ const kindConfig = {
   bubble: {
     init(o) {
       o.mass = 0.9; o.drag = 0.96; o.wobSpeed = 2.6; o.size = 34;
+      o.imgName = 'bubble';
       o.r = rand(18, 30); o.size = o.r;
       o.pop = false;
     },
@@ -854,37 +694,8 @@ const kindConfig = {
       }
     },
     draw(o) {
-      const r = o.r;
-      // near-transparent body with faint film gradient
-      const g = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 1, 0, 0, r);
-      g.addColorStop(0, 'rgba(255,255,255,0.42)');
-      g.addColorStop(0.65, 'rgba(200,230,255,0.10)');
-      g.addColorStop(0.92, 'rgba(170,210,255,0.16)');
-      g.addColorStop(1, 'rgba(150,200,255,0.30)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
-      // --- subtle rainbow rim (multi-hue arcs) ---
-      ctx.globalAlpha = 0.32; ctx.lineWidth = 2.2;
-      const hues = ['rgba(255,190,220,0.9)', 'rgba(200,220,255,0.9)', 'rgba(200,255,220,0.9)', 'rgba(255,240,190,0.9)'];
-      for (let k = 0; k < 4; k++) {
-        ctx.strokeStyle = hues[k];
-        ctx.beginPath(); ctx.arc(0, 0, r - 2.5, k * 1.55 + 0.3, k * 1.55 + 1.5); ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-      // clean bright rim
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.3;
-      ctx.beginPath(); ctx.arc(0, 0, r - 0.8, 0, TAU); ctx.stroke();
-      // --- upper-left crescent highlight ---
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = r * 0.16; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.arc(0, 0, r * 0.66, Math.PI * 1.05, Math.PI * 1.5); ctx.stroke();
-      // bright glint dot
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.beginPath(); ctx.arc(-r * 0.4, -r * 0.4, r * 0.1, 0, TAU); ctx.fill();
-      // --- secondary reflection bottom-right ---
-      const sg = ctx.createRadialGradient(r * 0.34, r * 0.36, 0, r * 0.34, r * 0.36, r * 0.32);
-      sg.addColorStop(0, 'rgba(255,255,255,0.5)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = sg;
-      ctx.beginPath(); ctx.arc(r * 0.34, r * 0.36, r * 0.32, 0, TAU); ctx.fill();
+      // real illustrated soap-bubble sprite (transparent PNG), sized to its radius
+      drawImg('bubble', o.r * 2.4);
     },
     cleared() { return false; }
   },
@@ -893,7 +704,8 @@ const kindConfig = {
   orb: {
     init(o) {
       o.mass = 1.6; o.drag = 0.94; o.wobSpeed = 2; o.size = 40;
-      o.color = pick(['#ff9ed6', '#9ed4ff', '#c9a0ff', '#a0ffd6', '#ffe08a']);
+      const ov = pick([['magic-orb-purple', '#c9a0ff'], ['magic-orb-cyan', '#8be0d4'], ['magic-orb-gold', '#ffe08a']]);
+      o.imgName = ov[0]; o.color = ov[1];
       o.pulse = rand(0, TAU); o.trailT = 0;
     },
     onWind(o, power) {
@@ -911,45 +723,9 @@ const kindConfig = {
       }
     },
     draw(o) {
-      const pul = 1 + Math.sin(o.pulse) * 0.12;
-      const r = 20 * pul;
-      const col = o.color;
-      // --- outer soft halo ---
-      const halo = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r * 2.7);
-      halo.addColorStop(0, rgba(col, 0.5)); halo.addColorStop(0.5, rgba(col, 0.16)); halo.addColorStop(1, rgba(col, 0));
-      ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, r * 2.7, 0, TAU); ctx.fill();
-      // --- sparkle cross (4 tapered rays at 45°) ---
-      ctx.save();
-      ctx.rotate(Math.PI / 4 + o.pulse * 0.25);
-      const len = r * 2.4, wid = r * 0.13;
-      for (let k = 0; k < 4; k++) {
-        ctx.beginPath();
-        ctx.moveTo(0, 0); ctx.lineTo(len * 0.5, -wid); ctx.lineTo(len, 0); ctx.lineTo(len * 0.5, wid); ctx.closePath();
-        const rg = ctx.createLinearGradient(0, 0, len, 0);
-        rg.addColorStop(0, 'rgba(255,255,255,0.7)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = rg; ctx.fill();
-        ctx.rotate(Math.PI / 2);
-      }
-      ctx.restore();
-      // --- inner glow ---
-      const ig = ctx.createRadialGradient(0, 0, 1, 0, 0, r * 1.35);
-      ig.addColorStop(0, rgba(lighten(col, 30), 0.9)); ig.addColorStop(1, rgba(col, 0));
-      ctx.fillStyle = ig; ctx.beginPath(); ctx.arc(0, 0, r * 1.35, 0, TAU); ctx.fill();
-      // --- bright core ---
-      const g2 = ctx.createRadialGradient(-r * 0.32, -r * 0.32, 1, 0, 0, r);
-      g2.addColorStop(0, '#ffffff'); g2.addColorStop(0.5, lighten(col, 25)); g2.addColorStop(1, col);
-      ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
-      // --- orbiting particle ring ---
-      for (let k = 0; k < 5; k++) {
-        const a = o.pulse * 0.8 + k * (TAU / 5);
-        const orbR = r * 1.7 + Math.sin(o.pulse + k) * 3;
-        const px = Math.cos(a) * orbR, py = Math.sin(a) * orbR * 0.62;
-        ctx.globalAlpha = 0.75;
-        const pg = ctx.createRadialGradient(px, py, 0, px, py, 3);
-        pg.addColorStop(0, '#ffffff'); pg.addColorStop(1, rgba(col, 0));
-        ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(px, py, 3, 0, TAU); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
+      // real illustrated glowing orb sprite; keep a soft breathing pulse
+      const pul = 1 + Math.sin(o.pulse) * 0.08;
+      drawImg(o.imgName || 'magic-orb-purple', 104 * pul);
     },
     cleared() { return false; }
   },
@@ -1041,26 +817,8 @@ function drawParticlesExt() {
     ctx.globalAlpha = a;
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot || 0);
-    const R = p.r + 3;
-    // soft halo around the pappus
-    const hg = ctx.createRadialGradient(0, -R * 0.4, 0, 0, -R * 0.4, R * 1.3);
-    hg.addColorStop(0, 'rgba(255,255,255,0.5)'); hg.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, -R * 0.4, R * 1.3, 0, TAU); ctx.fill();
-    // curved stalk + seed body at the bottom
-    ctx.strokeStyle = 'rgba(208,192,158,0.85)'; ctx.lineWidth = 0.8; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(0, R); ctx.quadraticCurveTo(0.6, R * 0.3, 0, -R * 0.2); ctx.stroke();
-    ctx.fillStyle = 'rgba(158,128,88,0.9)';
-    ctx.beginPath(); ctx.ellipse(0, R, 1, 2.6, 0, 0, TAU); ctx.fill();
-    // parachute filaments radiating up, each with a soft tuft
-    ctx.strokeStyle = 'rgba(250,252,255,0.72)'; ctx.lineWidth = 0.7;
-    for (let k = 0; k < 9; k++) {
-      const ang = -Math.PI / 2 + (k - 4) / 4 * 1.15;
-      const ex = Math.cos(ang) * R, ey = Math.sin(ang) * R - R * 0.2;
-      ctx.beginPath(); ctx.moveTo(0, -R * 0.2); ctx.lineTo(ex, ey); ctx.stroke();
-      const tg = ctx.createRadialGradient(ex, ey, 0, ex, ey, 2);
-      tg.addColorStop(0, 'rgba(255,255,255,0.95)'); tg.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = tg; ctx.beginPath(); ctx.arc(ex, ey, 2, 0, TAU); ctx.fill();
-    }
+    // real illustrated flying dandelion-seed sprite
+    drawImg('dandelion-seed', (p.r + 3) * 2.8);
     ctx.restore();
   }
   ctx.globalAlpha = 1;
@@ -1117,148 +875,12 @@ function drawPoppu() {
   const squash = poppu.mood === 'celebrate' ? 1 + poppu.bounce * 0.06 : breathe;
   ctx.scale(1 / squash, squash);
 
-  const O_TOP = '#ffb066', O = '#ff9a56', OD = '#ef7a37', CREAM = '#fff2e0', PINK = '#ffc2c2';
   const celebrate = poppu.mood === 'celebrate';
-  const armUp = poppu.mood !== 'idle';
-
-  // ===== TAIL (behind body) =====
-  ctx.save();
-  ctx.rotate(Math.sin(poppu.armWave * 0.5) * (armUp ? 0.2 : 0.06) + 0.34);
-  const tg = ctx.createLinearGradient(-52, -22, -16, 12);
-  tg.addColorStop(0, OD); tg.addColorStop(1, O);
-  softShadow('rgba(200,105,45,0.28)', 8, 0, 3);
-  ctx.fillStyle = tg;
-  ctx.beginPath();
-  ctx.moveTo(-20, 12);
-  ctx.quadraticCurveTo(-54, 6, -49, -22);
-  ctx.quadraticCurveTo(-42, -32, -31, -18);
-  ctx.quadraticCurveTo(-23, -6, -18, 8);
-  ctx.closePath(); ctx.fill();
-  clearShadow();
-  // fluffy white tip
-  const ttg = ctx.createRadialGradient(-46, -20, 1, -46, -20, 15);
-  ttg.addColorStop(0, '#ffffff'); ttg.addColorStop(1, CREAM);
-  ctx.fillStyle = ttg;
-  ctx.beginPath();
-  ctx.moveTo(-40, -26);
-  ctx.quadraticCurveTo(-57, -22, -51, -4);
-  ctx.quadraticCurveTo(-45, -13, -38, -15);
-  ctx.quadraticCurveTo(-36, -22, -40, -26);
-  ctx.closePath(); ctx.fill();
-  ctx.restore();
-
-  // ===== BODY =====
-  const bodyG = ctx.createRadialGradient(-6, 4, 4, 0, 16, 32);
-  bodyG.addColorStop(0, O_TOP); bodyG.addColorStop(0.7, O); bodyG.addColorStop(1, OD);
-  softShadow('rgba(200,105,45,0.22)', 8, 0, 4);
-  ctx.fillStyle = bodyG;
-  ctx.beginPath(); ctx.ellipse(0, 16, 25, 25, 0, 0, TAU); ctx.fill();
-  clearShadow();
-  // chest cream fur
-  const chestG = ctx.createRadialGradient(0, 15, 2, 0, 18, 18);
-  chestG.addColorStop(0, '#fffaf2'); chestG.addColorStop(1, CREAM);
-  ctx.fillStyle = chestG;
-  ctx.beginPath(); ctx.ellipse(0, 19, 14, 16, 0, 0, TAU); ctx.fill();
-
-  // ===== ARMS (rounded nubs) =====
-  const wave = Math.sin(poppu.armWave) * (armUp ? 0.5 : 0.12);
-  for (const dir of [-1, 1]) {
-    ctx.save();
-    ctx.translate(dir * 20, 10);
-    const rot = dir < 0 ? (armUp ? -2.3 + wave : -0.5 + wave) : (armUp ? 2.3 - wave : 0.5 - wave);
-    ctx.rotate(rot);
-    const ag = ctx.createLinearGradient(0, -5, 0, 5);
-    ag.addColorStop(0, O_TOP); ag.addColorStop(1, OD);
-    ctx.fillStyle = ag;
-    roundRect(ctx, -2, -5, 18, 10, 5); ctx.fill();
-    // soft paw tip
-    const pw = ctx.createRadialGradient(14, -1, 1, 14, 0, 6);
-    pw.addColorStop(0, O_TOP); pw.addColorStop(1, O);
-    ctx.fillStyle = pw;
-    ctx.beginPath(); ctx.arc(14, 0, 5.5, 0, TAU); ctx.fill();
-    ctx.restore();
-  }
-
-  // ===== HEAD =====
-  const headG = ctx.createRadialGradient(-6, -26, 4, 0, -16, 33);
-  headG.addColorStop(0, O_TOP); headG.addColorStop(0.7, O); headG.addColorStop(1, OD);
-  softShadow('rgba(200,105,45,0.22)', 8, 0, 3);
-  ctx.fillStyle = headG;
-  ctx.beginPath(); ctx.ellipse(0, -18, 30, 27, 0, 0, TAU); ctx.fill();
-  clearShadow();
-
-  // ===== EARS (rounded points + pink inner) =====
-  const earBounce = armUp ? Math.abs(Math.sin(poppu.armWave * 1.5)) * 4 : 0;
-  for (const dir of [-1, 1]) {
-    const eg = ctx.createLinearGradient(dir * 13, -52, dir * 13, -30);
-    eg.addColorStop(0, O_TOP); eg.addColorStop(1, OD);
-    ctx.fillStyle = eg;
-    ctx.beginPath();
-    ctx.moveTo(dir * 13, -36);
-    ctx.quadraticCurveTo(dir * 31, -55 - earBounce, dir * 32, -33);
-    ctx.quadraticCurveTo(dir * 24, -29, dir * 13, -36);
-    ctx.closePath(); ctx.fill();
-    // inner pink
-    ctx.fillStyle = PINK;
-    ctx.beginPath();
-    ctx.moveTo(dir * 17, -37);
-    ctx.quadraticCurveTo(dir * 27, -49 - earBounce, dir * 28, -35);
-    ctx.quadraticCurveTo(dir * 22, -33, dir * 17, -37);
-    ctx.closePath(); ctx.fill();
-  }
-
-  // ===== SNOUT / CHEEK CREAM PATCH =====
-  const snoutG = ctx.createRadialGradient(0, -8, 2, 0, -8, 22);
-  snoutG.addColorStop(0, '#fffaf2'); snoutG.addColorStop(1, CREAM);
-  ctx.fillStyle = snoutG;
-  ctx.beginPath(); ctx.ellipse(0, -9, 21, 15, 0, 0, TAU); ctx.fill();
-
-  // blush
-  ctx.fillStyle = 'rgba(255,140,150,0.4)';
-  ctx.beginPath(); ctx.ellipse(-16, -7, 6, 4, 0, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(16, -7, 6, 4, 0, 0, TAU); ctx.fill();
-
-  // ===== EYES =====
-  const eyeOpen = 1 - poppu.blink;
-  for (const dir of [-1, 1]) {
-    ctx.save();
-    ctx.translate(dir * 11, -17);
-    if (celebrate) {
-      ctx.strokeStyle = '#3a2e4a'; ctx.lineWidth = 3.2; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(-5, 1); ctx.quadraticCurveTo(0, -6, 5, 1); ctx.stroke();
-    } else {
-      ctx.scale(1, eyeOpen);
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.ellipse(0, 0, 5.5, 7, 0, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#3a2a3f';
-      ctx.beginPath(); ctx.ellipse(dir * 0.6, 0.8, 3.7, 5.2, 0, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(dir * 0.6 + 1.5, -1.9, 1.6, 0, TAU); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.beginPath(); ctx.arc(dir * 0.6 - 1, 1.8, 0.8, 0, TAU); ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  // ===== NOSE =====
-  const ng = ctx.createRadialGradient(-1, -9, 0, 0, -8, 4);
-  ng.addColorStop(0, '#7a5240'); ng.addColorStop(1, '#4e3122');
-  ctx.fillStyle = ng;
-  ctx.beginPath(); ctx.ellipse(0, -8, 3.8, 2.9, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.beginPath(); ctx.ellipse(-1, -9, 1.2, 0.9, 0, 0, TAU); ctx.fill();
-
-  // ===== MOUTH =====
-  ctx.strokeStyle = '#5a3a2a'; ctx.lineWidth = 2; ctx.lineCap = 'round';
-  if (celebrate || poppu.mood === 'excited') {
-    ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(0, -3.5); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-6, -3); ctx.quadraticCurveTo(0, 6, 6, -3); ctx.stroke();
-    ctx.fillStyle = '#ff8f9f';
-    ctx.beginPath(); ctx.moveTo(-5, -2); ctx.quadraticCurveTo(0, 5, 5, -2); ctx.quadraticCurveTo(0, 2, -5, -2); ctx.fill();
-  } else {
-    ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(0, -4); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-4, -4); ctx.quadraticCurveTo(0, -1, 4, -4); ctx.stroke();
-  }
+  // ===== POPPU — real illustrated mascot sprite, chosen by mood =====
+  const poppuImg = celebrate ? 'poppu-celebrate'
+                 : poppu.mood === 'excited' ? 'poppu-excited'
+                 : 'poppu-idle';
+  drawImg(poppuImg, 150, -4);
 
   // ===== CELEBRATION STARS =====
   if (celebrate) {
@@ -1409,37 +1031,17 @@ function drawSoftCloud(x, y, s, tint) {
 }
 
 function drawMeadowBG(dt) {
-  // --- radial sky: warm light low at horizon -> deeper blue at top ---
-  const sg = ctx.createRadialGradient(W * 0.5, H * 0.94, H * 0.08, W * 0.5, H * 0.15, H * 1.1);
-  sg.addColorStop(0, '#f5ffe2');
-  sg.addColorStop(0.32, '#d9f6ea');
-  sg.addColorStop(0.66, '#bfe7fb');
-  sg.addColorStop(1, '#98c6f0');
-  ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H);
-  // --- sun with soft corona ---
-  const sx = W * 0.8, sy = H * 0.17;
-  const cor = ctx.createRadialGradient(sx, sy, 8, sx, sy, 190);
-  cor.addColorStop(0, 'rgba(255,250,205,0.9)');
-  cor.addColorStop(0.4, 'rgba(255,240,180,0.32)');
-  cor.addColorStop(1, 'rgba(255,240,180,0)');
-  ctx.fillStyle = cor; ctx.beginPath(); ctx.arc(sx, sy, 190, 0, TAU); ctx.fill();
-  const sun = ctx.createRadialGradient(sx - 8, sy - 8, 4, sx, sy, 46);
-  sun.addColorStop(0, '#fffef2'); sun.addColorStop(0.7, '#fff2ae'); sun.addColorStop(1, '#ffdf78');
-  ctx.fillStyle = sun; ctx.beginPath(); ctx.arc(sx, sy, 44, 0, TAU); ctx.fill();
-  // --- drifting clouds ---
-  for (const c of bgClouds) {
-    c.x += c.sp * dt;
-    if (c.x > W + 90) c.x = -90;
-    ctx.globalAlpha = 0.92;
-    drawSoftCloud(c.x, c.y, c.s * 0.9);
-    ctx.globalAlpha = 1;
+  // real illustrated meadow background (scaled to cover the screen)
+  drawBGCover('bg-meadow');
+  // illustrated wildflower foreground band tiled along the bottom (flower-set asset)
+  const im = IMG['flower-set'];
+  if (im && im.complete && im.naturalWidth) {
+    const bh = clamp(H * 0.16, 80, 190);
+    const bw = bh * (im.naturalWidth / im.naturalHeight);
+    for (let x = -bw * 0.3; x < W + bw; x += bw * 0.92) {
+      ctx.drawImage(im, x, H - bh, bw, bh);
+    }
   }
-  // --- layered rolling hills ---
-  drawHill(H * 0.72, ['#c2efb0', '#9bde8c'], 0, 26);
-  drawHill(H * 0.80, ['#a2e18e', '#79cd6c'], 40, 30);
-  drawHill(H * 0.88, ['#86d578', '#5cb653'], 80, 34);
-  // --- grass foreground + flowers ---
-  drawGrass();
 }
 function drawHill(y, colors, phase, amp) {
   amp = amp || 24;
@@ -1513,32 +1115,12 @@ function drawFlower(f) {
 }
 
 function drawSkyBG(dt) {
-  // higher-altitude gradient with warm horizon
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#6fb6f4');
-  g.addColorStop(0.45, '#a6d8fb');
-  g.addColorStop(0.8, '#dcf0ff');
-  g.addColorStop(1, '#ffe7cf');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  // horizon peach glow
-  const hb = ctx.createLinearGradient(0, H * 0.68, 0, H);
-  hb.addColorStop(0, 'rgba(255,200,150,0)');
-  hb.addColorStop(1, 'rgba(255,188,138,0.5)');
-  ctx.fillStyle = hb; ctx.fillRect(0, H * 0.68, W, H * 0.32);
-  // wispy cirrus streaks
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.32)'; ctx.lineCap = 'round';
-  for (let i = 0; i < 6; i++) {
-    const cy = H * 0.1 + i * H * 0.05 + Math.sin(i * 2.1) * 10;
-    const cx = ((i * W * 0.23 + poppu.t * 4 * (0.5 + i * 0.1)) % (W + 300)) - 150;
-    ctx.lineWidth = 2 + (i % 3);
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.quadraticCurveTo(cx + 70, cy - 4, cx + 150, cy); ctx.stroke();
-  }
-  ctx.restore();
-  // reveal sun/rainbow behind pushed clouds
+  // real illustrated sky background (scaled to cover the screen)
+  drawBGCover('bg-sky');
+  // reveal a soft rainbow low in the sky as clouds get pushed away (scene logic kept)
   if (rainbowReveal > 0.01) {
     ctx.save();
-    ctx.globalAlpha = clamp(rainbowReveal, 0, 1);
+    ctx.globalAlpha = clamp(rainbowReveal, 0, 1) * 0.9;
     const cx = W * 0.5, cy = H * 0.9;
     const bands = ['#ff6b8f','#ffb26b','#ffe66b','#8fe08f','#6bc6ff','#c39bff'];
     for (let i = 0; i < bands.length; i++) {
@@ -1549,63 +1131,11 @@ function drawSkyBG(dt) {
     }
     ctx.restore();
   }
-  for (const c of bgClouds) {
-    c.x += c.sp * dt;
-    if (c.x > W + 80) c.x = -80;
-    ctx.globalAlpha = 0.55;
-    drawSoftCloud(c.x, c.y, c.s);
-    ctx.globalAlpha = 1;
-  }
 }
 
 function drawMagicBG(dt) {
-  // deep radial night gradient
-  const g = ctx.createRadialGradient(W * 0.5, H * 0.4, H * 0.05, W * 0.5, H * 0.5, H * 0.95);
-  g.addColorStop(0, '#4b3080'); g.addColorStop(0.5, '#38236a'); g.addColorStop(1, '#1d1440');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  // twinkling starfield
-  for (const st of bgStars) {
-    st.tw += st.sp * dt;
-    const a = 0.35 + Math.abs(Math.sin(st.tw)) * 0.65;
-    ctx.globalAlpha = a;
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, TAU); ctx.fill();
-    if (st.r > 1.8) {
-      ctx.globalAlpha = a * 0.6;
-      drawStar(st.x, st.y, st.r * 2.6, 'rgba(255,255,255,0.7)', 4);
-    }
-  }
-  ctx.globalAlpha = 1;
-  // soft aurora ribbons (sine paths)
-  for (let k = 0; k < 3; k++) {
-    const hue = [285, 200, 325][k];
-    ctx.save();
-    ctx.globalAlpha = 0.15;
-    ctx.strokeStyle = `hsl(${hue}, 80%, 68%)`;
-    ctx.lineWidth = 46; ctx.lineCap = 'round';
-    ctx.beginPath();
-    for (let x = -50; x <= W + 50; x += 28) {
-      const y = H * (0.24 + k * 0.12) + Math.sin(x * 0.006 + poppu.t * 0.5 + k) * 42;
-      if (x === -50) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    ctx.restore();
-  }
-  // floating dust motes
-  for (let i = 0; i < 24; i++) {
-    const dx = (i * W / 24 + Math.sin(i * 3.1 + poppu.t * 0.2) * 20 + W) % W;
-    const dy = H - ((i * 57 + poppu.t * 12 * (0.5 + (i % 3) * 0.3)) % (H + 40));
-    ctx.globalAlpha = 0.4;
-    const dg = ctx.createRadialGradient(dx, dy, 0, dx, dy, 4);
-    dg.addColorStop(0, `hsla(${(i * 40) % 360},90%,80%,0.85)`); dg.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = dg; ctx.beginPath(); ctx.arc(dx, dy, 4, 0, TAU); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-  // distant glow floor
-  const fg = ctx.createLinearGradient(0, H * 0.7, 0, H);
-  fg.addColorStop(0, 'rgba(200,140,220,0)');
-  fg.addColorStop(1, 'rgba(255,200,240,0.28)');
-  ctx.fillStyle = fg; ctx.fillRect(0, H * 0.7, W, H * 0.3);
+  // real illustrated magical night-sky background (scaled to cover the screen)
+  drawBGCover('bg-magic');
 }
 
 /* ============================================================================
@@ -1742,21 +1272,8 @@ function updateCelebration(dt) {
 let startT = 0;
 
 function drawMiniSeed() {
-  const R = 6;
-  const hg = ctx.createRadialGradient(0, -R * 0.4, 0, 0, -R * 0.4, R * 1.3);
-  hg.addColorStop(0, 'rgba(255,255,255,0.5)'); hg.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, -R * 0.4, R * 1.3, 0, TAU); ctx.fill();
-  ctx.strokeStyle = 'rgba(208,192,158,0.8)'; ctx.lineWidth = 0.8; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(0, R); ctx.lineTo(0, -R * 0.2); ctx.stroke();
-  ctx.strokeStyle = 'rgba(250,252,255,0.75)'; ctx.lineWidth = 0.7;
-  for (let k = 0; k < 9; k++) {
-    const ang = -Math.PI / 2 + (k - 4) / 4 * 1.15;
-    const ex = Math.cos(ang) * R, ey = Math.sin(ang) * R - R * 0.2;
-    ctx.beginPath(); ctx.moveTo(0, -R * 0.2); ctx.lineTo(ex, ey); ctx.stroke();
-    const tg = ctx.createRadialGradient(ex, ey, 0, ex, ey, 2);
-    tg.addColorStop(0, 'rgba(255,255,255,0.95)'); tg.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = tg; ctx.beginPath(); ctx.arc(ex, ey, 2, 0, TAU); ctx.fill();
-  }
+  // real illustrated dandelion-seed sprite
+  drawImg('dandelion-seed', 30);
 }
 
 function drawStartTitle(cx, cy) {
@@ -1861,12 +1378,12 @@ function drawStartScreen(dt) {
   ctx.save();
   ctx.translate(W * 0.15, H * 0.55 + Math.sin(startT * 0.9) * 14);
   ctx.scale(0.85, 0.85);
-  kindConfig.balloon.draw({ squish: 0, color: '#ff8fb8', wob: startT });
+  kindConfig.balloon.draw({ squish: 0, color: '#ff8fb8', wob: startT, imgName: 'balloon-pink' });
   ctx.restore();
   ctx.save();
   ctx.translate(W * 0.84 + Math.sin(startT * 0.7) * 20, H * 0.34 + Math.cos(startT * 0.9) * 12);
   ctx.scale(1.15, 1.15); ctx.rotate(Math.sin(startT) * 0.2);
-  kindConfig.butterfly.draw({ flap: startT * 7, color: '#c39bff' });
+  kindConfig.butterfly.draw({ flap: startT * 7, color: '#c39bff', imgName: 'butterfly-purple' });
   ctx.restore();
   ctx.save();
   ctx.translate(W * 0.78 + Math.sin(startT * 0.5) * 26, H * 0.64 + Math.sin(startT * 0.8) * 10);
