@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Poppu Blow">
+<meta name="application-name" content="Poppu Blow">
 <meta name="theme-color" content="#bfe6f5">
+<meta name="description" content="Poppu Blow — a gentle wind game for little ones. Drag to make wind and blow away flowers, balloons, bubbles and more. No ads, no timers, safe for kids.">
+<link rel="apple-touch-icon" href="assets/poppu-icon.png">
+<link rel="icon" href="assets/poppu-icon.png">
 <title>Poppu Blow</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -25,11 +31,130 @@
     white-space: nowrap;
   }
   #hint.show { opacity: 1; }
+
+  /* ---- corner buttons (mute + parent) ---- */
+  .corner-btn {
+    position: fixed; z-index: 20; width: 46px; height: 46px; border: none;
+    border-radius: 16px; background: rgba(255,255,255,0.82); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(60,70,90,.22); backdrop-filter: blur(4px);
+    padding: 0; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    transition: transform .12s ease, background .15s ease;
+  }
+  .corner-btn:active { transform: scale(.9); }
+  .corner-btn svg { width: 26px; height: 26px; display: block; }
+  #muteBtn { top: 12px; right: 12px; }
+  #parentBtn { top: 12px; left: 12px; }
+  #muteBtn.muted { background: rgba(255,224,224,0.9); }
+
+  /* ---- parent overlay ---- */
+  #parentScreen {
+    position: fixed; inset: 0; z-index: 40; display: none;
+    background: rgba(40,30,60,0.55); backdrop-filter: blur(3px);
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  #parentScreen.show { display: flex; }
+  #parentCard {
+    width: min(92vw, 440px); max-height: 88vh; overflow: auto;
+    background: linear-gradient(180deg,#fffaf3,#ffeede);
+    border-radius: 26px; padding: 26px 24px 22px; box-shadow: 0 18px 50px rgba(0,0,0,.35);
+    color: #6a5a48; text-align: center;
+  }
+  #parentCard h2 { font-size: 24px; color: #c07a4a; margin-bottom: 4px; }
+  #parentCard .tag { font-size: 13px; color: #a08a72; margin-bottom: 18px; }
+  #parentCard .row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(255,255,255,0.7); border-radius: 16px; padding: 14px 16px; margin: 10px 0;
+    font-size: 16px; font-weight: bold; color: #6a5a48;
+  }
+  .toggle {
+    width: 58px; height: 32px; border-radius: 18px; background: #d8ccbc; position: relative;
+    border: none; cursor: pointer; transition: background .18s ease; flex: 0 0 auto;
+  }
+  .toggle.on { background: #8ed36a; }
+  .toggle .knob {
+    position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%;
+    background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: left .18s ease;
+  }
+  .toggle.on .knob { left: 29px; }
+  #parentCard p { font-size: 14px; line-height: 1.5; color: #7a6a58; margin: 10px 4px; text-align: left; }
+  #parentCard .about { background: rgba(255,255,255,0.55); border-radius: 14px; padding: 12px 14px; margin-top: 8px; }
+  #parentClose {
+    margin-top: 18px; border: none; cursor: pointer; font-size: 17px; font-weight: 900; color: #fff;
+    background: linear-gradient(180deg,#8ee86a,#4fb43f); padding: 13px 40px; border-radius: 40px;
+    box-shadow: 0 6px 16px rgba(80,180,60,.45); -webkit-tap-highlight-color: transparent;
+  }
+  #parentClose:active { transform: scale(.96); }
+
+  /* ---- loading screen ---- */
+  #loading {
+    position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 26px;
+    background: radial-gradient(120% 120% at 50% 20%, #fff6da 0%, #ffe6c8 42%, #ffd2e6 72%, #d9c2ef 100%);
+    transition: opacity .5s ease; opacity: 1;
+  }
+  #loading.hide { opacity: 0; pointer-events: none; }
+  #loading .pop {
+    width: 128px; height: 128px; border-radius: 50%; object-fit: cover;
+    animation: popBounce 1.05s ease-in-out infinite;
+    filter: drop-shadow(0 12px 18px rgba(120,90,150,.35));
+  }
+  #loading .pop-fallback {
+    width: 120px; height: 120px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 34%, #ffd28a, #ff9e6b);
+    animation: popBounce 1.05s ease-in-out infinite;
+    box-shadow: 0 12px 18px rgba(120,90,150,.35);
+  }
+  @keyframes popBounce {
+    0%,100% { transform: translateY(0) scale(1,1); }
+    30%     { transform: translateY(-30px) scale(.94,1.06); }
+    55%     { transform: translateY(0) scale(1.08,.92); }
+    70%     { transform: translateY(-8px) scale(1,1); }
+  }
+  #loading .loadTxt {
+    font-size: clamp(18px,5vw,26px); font-weight: 900; color: #a06fb0;
+    text-shadow: 0 2px 0 rgba(255,255,255,.6); letter-spacing: .3px;
+  }
+  #loading .dots::after { content: ''; animation: dots 1.4s steps(4,end) infinite; }
+  @keyframes dots { 0%{content:'';} 25%{content:'.';} 50%{content:'..';} 75%{content:'...';} 100%{content:'';} }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <div id="hint">✋ Drag to make wind!</div>
+
+<!-- Parent / settings button (top-left) -->
+<button id="parentBtn" class="corner-btn" aria-label="Menu">
+  <svg viewBox="0 0 24 24"><g fill="#7a6a8a"><circle cx="6" cy="12" r="2.1"/><circle cx="12" cy="12" r="2.1"/><circle cx="18" cy="12" r="2.1"/></g></svg>
+</button>
+
+<!-- Mute button (top-right) -->
+<button id="muteBtn" class="corner-btn" aria-label="Sound on/off">
+  <svg id="muteSvg" viewBox="0 0 24 24"></svg>
+</button>
+
+<!-- Parent screen overlay -->
+<div id="parentScreen">
+  <div id="parentCard">
+    <h2>For Grown-Ups</h2>
+    <div class="tag">Poppu Blow · ages 1–4</div>
+    <div class="row">
+      <span>🔊 Sound</span>
+      <button id="soundToggle" class="toggle on" aria-label="Toggle sound"><span class="knob"></span></button>
+    </div>
+    <div class="about">
+      <p><b>About</b> — Poppu Blow is a calm, open-ended wind game. Drag anywhere to make a breeze and watch flowers, balloons and bubbles float away. There is no way to lose.</p>
+      <p><b>For parents</b> — No ads. No in-app purchases. No links out. No data is collected or shared — everything stays on this device. Safe for little hands.</p>
+    </div>
+    <button id="parentClose">Back to play</button>
+  </div>
+</div>
+
+<!-- Loading screen -->
+<div id="loading">
+  <img id="loadingPop" class="pop" src="assets/poppu-icon.png" alt="Poppu" onerror="this.className='pop-fallback';this.removeAttribute('src');">
+  <div class="loadTxt">Poppu is getting ready<span class="dots"></span></div>
+</div>
 
 <script>
 "use strict";
@@ -93,7 +218,11 @@ const IMG_NAMES = [
   'magic-orb-purple', 'magic-orb-cyan', 'magic-orb-gold',
   'tulip', 'ladybug', 'starfish', 'seashell', 'seagull', 'acorn',
   'mushroom', 'firefly', 'jellyfish', 'fish', 'star-pickup',
-  'bg-meadow', 'bg-sky', 'bg-magic', 'bg-party'
+  'bg-meadow', 'bg-sky', 'bg-magic', 'bg-party',
+  'bg-garden', 'bg-beach', 'bg-forest', 'bg-ocean',
+  'poppu-guide', 'poppu-icon', 'gift',
+  'sticker-1', 'sticker-2', 'sticker-3', 'sticker-4',
+  'sticker-5', 'sticker-6', 'sticker-7', 'sticker-8'
 ];
 for (const n of IMG_NAMES) { const im = new Image(); im.src = 'assets/' + n + '.png'; IMG[n] = im; }
 function imgReady(name) { const i = IMG[name]; return !!(i && i.complete && i.naturalWidth > 0); }
@@ -127,9 +256,11 @@ function drawBGCover(name) {
    ========================================================================== */
 const Progress = (function () {
   const KEY = 'poppublow_v4';
-  let data = { stars: {}, completed: {}, stickers: [], seenTutorial: false };
+  let data = { stars: {}, completed: {}, stickers: [], seenTutorial: false,
+               muted: false, lastLogin: null, bonus: 0 };
   try { const s = localStorage.getItem(KEY); if (s) data = Object.assign(data, JSON.parse(s)); } catch (e) {}
   function save() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} }
+  function today() { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
   return {
     data,
     totalStars() { let t = 0; for (const k in data.stars) t += data.stars[k]; return t; },
@@ -144,6 +275,12 @@ const Progress = (function () {
     },
     hasSticker(id) { return data.stickers.indexOf(id) >= 0; },
     markTutorial() { data.seenTutorial = true; save(); },
+    isMuted() { return !!data.muted; },
+    setMuted(m) { data.muted = !!m; save(); },
+    getBonus() { return data.bonus || 0; },
+    // returns true the first time it's called on a new calendar day
+    isNewDay() { return data.lastLogin !== today(); },
+    claimDaily() { data.lastLogin = today(); data.bonus = (data.bonus || 0) + 1; save(); },
     save
   };
 })();
@@ -156,12 +293,13 @@ const Audio = (function () {
   let windGain = null, windFilter = null, windSrc = null, windLFO = null;
   let noiseBuf = null;
   let musicOn = false, musicTimer = null, mi = 0;
+  let muted = false;
 
   function init() {
     if (ac) return;
     try { ac = new (window.AudioContext || window.webkitAudioContext)(); }
     catch (e) { return; }
-    master = ac.createGain(); master.gain.value = 0.85; master.connect(ac.destination);
+    master = ac.createGain(); master.gain.value = muted ? 0 : 0.85; master.connect(ac.destination);
     musicGain = ac.createGain(); musicGain.gain.value = 0.9; musicGain.connect(master);
 
     const len = ac.sampleRate * 2;
@@ -188,6 +326,11 @@ const Audio = (function () {
   // Robust unlock: create context + resume on any user gesture (autoplay policy).
   function unlock() { init(); if (ac && ac.state === 'suspended') ac.resume(); }
   function resume() { if (ac && ac.state === 'suspended') ac.resume(); }
+  function setMuted(m) {
+    muted = !!m;
+    if (master) master.gain.setTargetAtTime(muted ? 0 : 0.85, ac.currentTime, 0.05);
+  }
+  function isMuted() { return muted; }
 
   function setWind(intensity) {
     if (!ready) return;
@@ -255,9 +398,15 @@ const Audio = (function () {
       Audio.chime(523, [0, 4, 7, 12, 16, 19], 0.16);
       setTimeout(() => Audio.chime(587, [0, 4, 7, 12], 0.13), 300);
     },
-    unlock() { Audio.chime(523, [0, 4, 7, 12], 0.12); }
+    unlock() { Audio.chime(523, [0, 4, 7, 12], 0.12); },
+    click()  { tone(rand(420,520), 0.06, 'triangle', 0.09, { attack: 0.003, filter: 2600 }); },
+    unwrap() {
+      // soft paper rustle + a happy little reveal chime
+      tone(rand(240,320), 0.14, 'triangle', 0.08, { attack: 0.006, glideTo: rand(420,540), filter: 1400 });
+      setTimeout(() => Audio.chime(rand(600,720), [0, 4, 7], 0.10), 90);
+    }
   };
-  return { init, unlock, resume, setWind, tone, chime, sfx, startMusic, stopMusic };
+  return { init, unlock, resume, setMuted, isMuted, setWind, tone, chime, sfx, startMusic, stopMusic };
 })();
 
 /* ============================================================================
@@ -566,7 +715,15 @@ const kindConfig = {
     },
     onWind(o, power) { o.squish = Math.min(1, o.squish + power * 0.6); if (power > 0.4 && Math.random() < 0.2) Audio.sfx.balloon(); },
     update(o, dt) { o.vy -= o.buoy * dt; o.vx += Math.sin(o.wob) * 6 * dt; o.squish *= 0.9; o.vy = clamp(o.vy, -140, 200); },
-    draw(o) { const sq = 1 - o.squish * 0.12; ctx.save(); ctx.scale(sq, 1 / sq); drawImg(o.imgName || 'balloon-red', 132, 24); ctx.restore(); },
+    draw(o) {
+      const sq = 1 - o.squish * 0.12;
+      ctx.save();
+      ctx.translate(0, Math.sin(o.wob) * 3);        // idle bob
+      ctx.rotate(Math.sin(o.wob * 0.5) * 0.04);      // idle drift-lean
+      ctx.scale(sq, 1 / sq);
+      drawImg(o.imgName || 'balloon-red', 132, 24);
+      ctx.restore();
+    },
     cleared() { return false; }
   },
 
@@ -595,7 +752,7 @@ const kindConfig = {
         Audio.sfx.pop(); onObjectCleared(o);
       }
     },
-    draw(o) { drawImg('bubble', o.r * 2.4); }, cleared() { return false; }
+    draw(o) { const pul = 1 + Math.sin(o.wob * 1.6) * 0.06; drawImg('bubble', o.r * 2.4 * pul); }, cleared() { return false; }
   },
 
   orb: {
@@ -670,10 +827,16 @@ kindConfig.mushroom = blowable({ mass: 2.6, img: 'mushroom', dispH: 110, yOff: 2
 kindConfig.starfish = blowable({ mass: 2.0, img: 'starfish', dispH: 96, sway: 2, tumble: 5, sfx: 'pop' });
 kindConfig.seashell = blowable({ mass: 1.6, img: 'seashell', dispH: 80, sway: 2, tumble: 6, sfx: 'bubble' });
 kindConfig.acorn    = blowable({ mass: 1.6, img: 'acorn',    dispH: 68, sway: 2, tumble: 8, sfx: 'pop', update(o, dt){ o.vy += 6 * dt; } });
-kindConfig.gift     = blowable({ mass: 3.0, img: 'gift',     dispH: 92, sway: 1.4, tumble: 3, sfx: 'balloon',
-  init(o){ o.giftColor = pick(['#ff8fb8','#8ec5ff','#ffd166','#a0e6a0','#c39bff','#ff9e6b']); } });
-// no gift.png on disk — draw a clean, cute wrapped present (geometric, reads great at toddler scale)
-kindConfig.gift.draw = function (o) { drawGift(o); };
+kindConfig.gift     = blowable({ mass: 3.0, img: 'gift',     dispH: 96, sway: 1.4, tumble: 3, sfx: 'unwrap',
+  init(o){ o.giftColor = pick(['#ff8fb8','#8ec5ff','#ffd166','#a0e6a0','#c39bff','#ff9e6b']); o.hop = rand(0, TAU); } });
+// Prefer the painted gift.png; fall back to a clean geometric present if the asset is missing.
+kindConfig.gift.update = function (o, dt) { o.vx += Math.sin(o.wob) * 1.4 * dt; o.hop += dt * 3; };
+kindConfig.gift.draw = function (o) {
+  ctx.save();
+  ctx.translate(0, -Math.abs(Math.sin(o.hop)) * 4);   // gentle idle hop
+  if (!drawImg('gift', 96, -6)) drawGift(o);
+  ctx.restore();
+};
 function drawGift(o) {
   const w = 66, h = 60, col = o.giftColor || '#ff8fb8';
   const lid = mixHex(col, '#ffffff', 0.22), ribbon = 'rgba(255,255,255,0.92)';
@@ -779,15 +942,19 @@ function drawPoppu() {
 // bg = a REAL on-disk painted background (we reuse meadow/sky/magic/party across
 // themes and re-grade the mood per level). grade = mood overlay applied on top;
 // 'ocean' is drawn fully procedural (water is a gradient + light rays in nature).
+// Each level has its own painted background (bg). grade/night/floaty are kept as
+// graceful fallbacks + gameplay mood flags for when a painting isn't on disk.
+// Density climbs across the run: L1-2 ≈ 15-20, L3-5 ≈ 20-28, L6-8 ≈ 28-35 objects
+// (+3 hidden stars each). Only the first spawn entry "counts" toward clearing.
 const LEVELS = [
-  { name: 'Meadow', bg: 'bg-meadow', windMul: 1.0, spawn: [['dandelion',5,true],['butterfly',3,false],['pollen',10,false]] },
-  { name: 'Garden', bg: 'bg-meadow', grade: 'garden', windMul: 1.0, spawn: [['tulip',6,true],['ladybug',4,false],['bubble',3,false]] },
-  { name: 'Sky',    bg: 'bg-sky',    windMul: 1.5, spawn: [['balloon',8,true],['cloud',4,false],['feather',3,false]] },
-  { name: 'Beach',  bg: 'bg-sky',    grade: 'beach', windMul: 1.1, spawn: [['starfish',5,true],['seashell',5,false],['seagull',3,false]] },
-  { name: 'Forest', bg: 'bg-meadow', grade: 'night', windMul: 1.1, night: true, spawn: [['acorn',8,true],['mushroom',5,false],['firefly',3,false]] },
-  { name: 'Ocean',  bg: 'bg-ocean',  grade: 'ocean', windMul: 0.9, floaty: true, spawn: [['jellyfish',6,true],['bubble',8,false],['fish',4,false]] },
-  { name: 'Magic',  bg: 'bg-magic',  windMul: 1.0, spawn: [['orb',8,true],['wisp',5,false],['glowstar',4,false]] },
-  { name: 'Party',  bg: 'bg-party',  windMul: 1.2, spawn: [['balloon',10,true],['cloud',6,false],['gift',5,false]] }
+  { name: 'Meadow', bg: 'bg-meadow', windMul: 1.0, spawn: [['dandelion',5,true],['butterfly',4,false],['pollen',12,false]] },
+  { name: 'Garden', bg: 'bg-garden', grade: 'garden', windMul: 1.0, spawn: [['tulip',6,true],['ladybug',5,false],['butterfly',3,false],['bubble',4,false]] },
+  { name: 'Sky',    bg: 'bg-sky',    windMul: 1.5, spawn: [['balloon',7,true],['cloud',5,false],['feather',6,false],['bubble',3,false]] },
+  { name: 'Beach',  bg: 'bg-beach',  grade: 'beach', windMul: 1.1, spawn: [['starfish',6,true],['seashell',7,false],['seagull',4,false],['bubble',4,false]] },
+  { name: 'Forest', bg: 'bg-forest', grade: 'night', windMul: 1.1, night: true, spawn: [['acorn',7,true],['mushroom',7,false],['firefly',8,false]] },
+  { name: 'Ocean',  bg: 'bg-ocean',  grade: 'ocean', windMul: 0.9, floaty: true, spawn: [['jellyfish',6,true],['bubble',14,false],['fish',7,false],['starfish',3,false]] },
+  { name: 'Magic',  bg: 'bg-magic',  windMul: 1.0, spawn: [['orb',7,true],['wisp',10,false],['glowstar',12,false]] },
+  { name: 'Party',  bg: 'bg-party',  windMul: 1.2, spawn: [['balloon',8,true],['cloud',8,false],['gift',7,false],['feather',8,false]] }
 ];
 const THEME_COLORS = ['#8fd66f','#ff9ec4','#8ec5ff','#ffcf6b','#7a6bd8','#4fc6d6','#c98fe0','#ff8fb8'];
 
@@ -839,23 +1006,27 @@ function loadLevel(i) {
 /* ---- backgrounds ---- */
 function drawLevelBG(dt) {
   const L = LEVELS[currentLevel], grade = L.grade;
-  if (grade === 'ocean') {
-    drawOceanBG(dt);
-  } else if (!drawBGCover(L.bg)) {
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, L.night ? '#26264a' : '#bfe6f5'); g.addColorStop(1, L.night ? '#3d3a6b' : '#e6f7ff');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  }
-  // mood grading — makes each reused painting read as its own theme
-  if (grade === 'garden') gradeGarden();
-  else if (grade === 'beach') gradeBeach(dt);
-  else if (grade === 'night') gradeNight(dt);
-  // meadow & garden keep the illustrated wildflower foreground band
-  if (currentLevel === 0 || grade === 'garden') {
-    const im = IMG['flower-set'];
-    if (im && im.complete && im.naturalWidth) {
-      const bh = clamp(H * 0.16, 80, 190), bw = bh * (im.naturalWidth / im.naturalHeight);
-      for (let x = -bw * 0.3; x < W + bw; x += bw * 0.92) ctx.drawImage(im, x, H - bh, bw, bh);
+  const painted = drawBGCover(L.bg);   // each level's own painted background
+  if (!painted) {
+    // ---- graceful fallback when a painting isn't on disk ----
+    if (grade === 'ocean') {
+      drawOceanBG(dt);
+    } else {
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, L.night ? '#26264a' : '#bfe6f5'); g.addColorStop(1, L.night ? '#3d3a6b' : '#e6f7ff');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // re-grade the generic gradient so the theme still reads
+      if (grade === 'garden') gradeGarden();
+      else if (grade === 'beach') gradeBeach(dt);
+      else if (grade === 'night') gradeNight(dt);
+    }
+    // illustrated wildflower foreground band (only without a painting)
+    if (currentLevel === 0 || grade === 'garden') {
+      const im = IMG['flower-set'];
+      if (im && im.complete && im.naturalWidth) {
+        const bh = clamp(H * 0.16, 80, 190), bw = bh * (im.naturalWidth / im.naturalHeight);
+        for (let x = -bw * 0.3; x < W + bw; x += bw * 0.92) ctx.drawImage(im, x, H - bh, bw, bh);
+      }
     }
   }
   // sky reveals a soft rainbow as clouds are pushed away
@@ -1047,6 +1218,40 @@ let gameScreen = 'title';          // title | map | play
 let bookOpen = false;
 const ui = { mapNodes: [], bookIcon: null, homeBtn: null, playBtn: null };
 let screenT = 0;
+const RES = 54;                    // reserved corner space for the DOM mute/parent buttons
+
+// daily-reward popup
+let dailyActive = false, dailyT = 0;
+// scene crossfade transition
+const trans = { active: false, t: 0, half: false, cb: null };
+const TRANS_HALF = 0.26;
+function startTransition(cb) {
+  if (trans.active) { if (cb) cb(); return; }
+  trans.active = true; trans.t = 0; trans.half = false; trans.cb = cb || null;
+}
+function updateTransition(dt) {
+  if (!trans.active) return;
+  trans.t += dt;
+  if (!trans.half && trans.t >= TRANS_HALF) { trans.half = true; if (trans.cb) { trans.cb(); trans.cb = null; } }
+  if (trans.t >= TRANS_HALF * 2) { trans.active = false; }
+}
+function drawTransition() {
+  if (!trans.active) return;
+  const a = trans.t < TRANS_HALF ? trans.t / TRANS_HALF : 1 - (trans.t - TRANS_HALF) / TRANS_HALF;
+  ctx.save(); ctx.globalAlpha = clamp(a, 0, 1); ctx.fillStyle = '#fff9f0'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  ctx.globalAlpha = 1;
+}
+// ambient drifting motes for extra life per level
+let ambientT = 0;
+const AMBIENT = ['#fff0a8','#ffffff','#d6ecff','#ffe08a','#d6ffe8','#ffd6e8','#fff3b0','#ffe0b0'];
+function spawnAmbient(dt) {
+  ambientT -= dt;
+  if (ambientT > 0 || particles.length > 380) return;
+  ambientT = rand(0.18, 0.4);
+  addParticle({ type: 'spark', x: rand(0, W), y: H + 12, vx: rand(-8, 8), vy: rand(-22, -40),
+    life: 1, decay: rand(0.18, 0.32), r: rand(2.5, 5), color: AMBIENT[currentLevel % AMBIENT.length],
+    grav: -4, airDrag: 0.995 });
+}
 
 function hit(rect, p) {
   if (!rect) return false;
@@ -1250,12 +1455,13 @@ function drawTopBar() {
   const txt = Progress.totalStars() + '/24';
   const tw = ctx.measureText(txt).width;
   const pw = tw + h * 1.5;
-  softShadow('rgba(60,70,90,0.2)', 8, 0, 3); ctx.fillStyle = 'rgba(255,255,255,0.92)'; roundRect(ctx, pad, pad, pw, h, h/2); ctx.fill(); clearShadow();
-  ctx.save(); ctx.translate(pad + h * 0.5, pad + h/2); drawStar(0, 0, h * 0.26, '#ffd54a'); ctx.restore();
-  ctx.fillStyle = '#7a6a55'; ctx.textAlign = 'left'; ctx.fillText(txt, pad + h * 0.9, pad + h/2 + 1);
+  const lx = pad + RES;   // shifted right to clear the parent button
+  softShadow('rgba(60,70,90,0.2)', 8, 0, 3); ctx.fillStyle = 'rgba(255,255,255,0.92)'; roundRect(ctx, lx, pad, pw, h, h/2); ctx.fill(); clearShadow();
+  ctx.save(); ctx.translate(lx + h * 0.5, pad + h/2); drawStar(0, 0, h * 0.26, '#ffd54a'); ctx.restore();
+  ctx.fillStyle = '#7a6a55'; ctx.textAlign = 'left'; ctx.fillText(txt, lx + h * 0.9, pad + h/2 + 1);
   ctx.restore();
-  // sticker book button (top-right)
-  const bx = W - pad - h, by = pad;
+  // sticker book button (top-right, shifted left to clear the mute button)
+  const bx = W - pad - h - RES, by = pad;
   ctx.save(); softShadow('rgba(60,70,90,0.2)', 8, 0, 3); ctx.fillStyle = 'rgba(255,255,255,0.92)';
   roundRect(ctx, bx, by, h, h, h * 0.28); ctx.fill(); clearShadow();
   ctx.translate(bx + h/2, by + h/2);
@@ -1312,15 +1518,16 @@ function drawBook() {
 function drawHUD() {
   const pad = clamp(Math.min(W, H) * 0.03, 10, 20);
   const h = clamp(Math.min(W, H) * 0.06, 32, 48);
-  // home button (top-left)
+  // home button (top-left, shifted right to clear the parent button)
+  const hx = pad + RES;
   ctx.save(); softShadow('rgba(60,70,90,0.22)', 8, 0, 3); ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  roundRect(ctx, pad, pad, h, h, h * 0.28); ctx.fill(); clearShadow();
+  roundRect(ctx, hx, pad, h, h, h * 0.28); ctx.fill(); clearShadow();
   ctx.strokeStyle = '#7a6a8a'; ctx.lineWidth = h * 0.09; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  const mx = pad + h/2, my = pad + h/2;
+  const mx = hx + h/2, my = pad + h/2;
   ctx.beginPath(); ctx.moveTo(mx - h*0.2, my + h*0.02); ctx.lineTo(mx, my - h*0.2); ctx.lineTo(mx + h*0.2, my + h*0.02); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(mx - h*0.13, my - h*0.02); ctx.lineTo(mx - h*0.13, my + h*0.18); ctx.lineTo(mx + h*0.13, my + h*0.18); ctx.lineTo(mx + h*0.13, my - h*0.02); ctx.stroke();
   ctx.restore();
-  ui.homeBtn = { x: pad, y: pad, w: h, h: h };
+  ui.homeBtn = { x: hx, y: pad, w: h, h: h };
 
   // level name pill + progress dots (top-center)
   ctx.save();
@@ -1344,7 +1551,7 @@ function drawHUD() {
   ctx.save();
   const txt = starsThisLevel + '/3';
   ctx.font = `bold ${h*0.44}px "Trebuchet MS", sans-serif`; ctx.textBaseline = 'middle';
-  const tw = ctx.measureText(txt).width, pw = tw + h * 1.4, bx = W - pad - pw;
+  const tw = ctx.measureText(txt).width, pw = tw + h * 1.4, bx = W - pad - pw - RES;
   softShadow('rgba(60,70,90,0.2)', 8, 0, 3); ctx.fillStyle = 'rgba(255,255,255,0.9)'; roundRect(ctx, bx, pad, pw, h, h/2); ctx.fill(); clearShadow();
   ctx.save(); ctx.translate(bx + h*0.5, pad + h/2); drawStar(0, 0, h * 0.24, '#ffd54a'); ctx.restore();
   ctx.fillStyle = '#7a6a55'; ctx.textAlign = 'left'; ctx.fillText(txt, bx + h*0.85, pad + h/2 + 1);
@@ -1412,6 +1619,47 @@ function drawReward(dt) {
   ctx.restore();
 }
 
+/* ---- daily-reward popup (Poppu holding a big gold star) ---- */
+function drawDaily(dt) {
+  dailyT += dt;
+  const cx = W / 2, cy = H * 0.52;
+  ctx.save();
+  ctx.fillStyle = 'rgba(40,30,60,0.6)'; ctx.fillRect(0, 0, W, H);
+  const pop = clamp(easeOutBack(clamp(dailyT / 0.5, 0, 1)), 0, 1.15);
+  const sr = clamp(Math.min(W, H) * 0.1, 50, 110);
+  const pulse = 1 + Math.sin(dailyT * 3) * 0.06;
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(pop, pop);
+  // star glow
+  const starY = -sr * 1.1;
+  const g = ctx.createRadialGradient(0, starY, 0, 0, starY, sr * 2.4);
+  g.addColorStop(0, 'rgba(255,240,150,0.85)'); g.addColorStop(1, 'rgba(255,240,150,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, starY, sr * 2.4, 0, TAU); ctx.fill();
+  // big gold star
+  ctx.save(); ctx.translate(0, starY); ctx.rotate(Math.sin(dailyT * 1.4) * 0.1);
+  drawStar(0, 0, sr * pulse, '#ffcf3f'); drawStar(0, 0, sr * 0.62 * pulse, '#fff2b0');
+  ctx.restore();
+  // Poppu below, reaching up to the star
+  const ps = clamp(Math.min(W, H) * 0.28, 120, 240);
+  ctx.save(); ctx.translate(0, sr * 0.7 + Math.sin(dailyT * 3) * 4);
+  if (!drawImg('poppu-celebrate', ps, -4)) if (!drawImg('poppu-idle', ps, -4)) { drawStar(0, 0, ps * 0.2, '#ff9e6b'); }
+  ctx.restore();
+  ctx.restore();
+  // headline
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  softShadow('rgba(120,90,150,0.45)', 8, 0, 3);
+  const fs = clamp(Math.min(W, H) * 0.052, 21, 38);
+  ctx.font = `900 ${fs}px "Trebuchet MS", sans-serif`;
+  ctx.fillText('Poppu brought you', cx, H * 0.17);
+  ctx.fillText('a star!', cx, H * 0.17 + fs * 1.15);
+  clearShadow();
+  if (dailyT > 0.8) {
+    ctx.globalAlpha = 0.55 + Math.sin(dailyT * 3) * 0.35;
+    ctx.font = `bold ${clamp(Math.min(W, H) * 0.035, 15, 20)}px "Trebuchet MS", sans-serif`;
+    ctx.fillText('tap to collect ▶', cx, H * 0.86); ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
 /* ============================================================================
    INPUT ROUTING
    ========================================================================== */
@@ -1421,18 +1669,20 @@ function onDown(e) {
   if (e && e.preventDefault) e.preventDefault();
   Audio.unlock();
   const p = screenPos(e);
-  if (bookOpen) { bookOpen = false; return; }
-  if (gameScreen === 'title') { gameScreen = 'map'; Audio.startMusic(); return; }
+  // daily reward: tap anywhere to collect
+  if (dailyActive) { dailyActive = false; Progress.claimDaily(); Audio.sfx.star(); return; }
+  if (bookOpen) { bookOpen = false; Audio.sfx.click(); return; }
+  if (gameScreen === 'title') { Audio.startMusic(); startTransition(() => { gameScreen = 'map'; }); return; }
   if (gameScreen === 'map') {
     if (hit(ui.bookIcon, p)) { bookOpen = true; Audio.sfx.pop(); return; }
     for (const nd of ui.mapNodes) {
-      if (nd.unlocked && dist2(nd.x, nd.y, p.x, p.y) <= (clamp(Math.min(W,H)*0.062,30,48) * 1.25) ** 2) { startLevel(nd.i); return; }
+      if (nd.unlocked && dist2(nd.x, nd.y, p.x, p.y) <= (clamp(Math.min(W,H)*0.062,30,48) * 1.25) ** 2) { Audio.sfx.click(); startTransition(() => startLevel(nd.i)); return; }
     }
     return;
   }
   // play
-  if (sceneState === 'reward') { gameScreen = 'map'; return; }
-  if (hit(ui.homeBtn, p)) { gameScreen = 'map'; Audio.setWind(0); return; }
+  if (sceneState === 'reward') { startTransition(() => { gameScreen = 'map'; }); return; }
+  if (hit(ui.homeBtn, p)) { Audio.setWind(0); Audio.sfx.click(); startTransition(() => { gameScreen = 'map'; }); return; }
   if (tutorial) { tutorial = null; Progress.markTutorial(); }
   pointer.down = true; pointer.active = true;
   pointer.x = pointer.px = p.x; pointer.y = pointer.py = p.y;
@@ -1469,12 +1719,13 @@ let idleTimer = 0;
 function frame(now) {
   let dt = (now - last) / 1000; last = now; dt = Math.min(dt, 0.05);
   ctx.clearRect(0, 0, W, H);
+  updateTransition(dt);
 
   if (gameScreen === 'title') { drawTitle(dt); }
   else if (gameScreen === 'map') { drawMap(dt); }
   else { // play
     updatePointer(dt); updatePoppu(dt);
-    if (sceneState === 'playing') { applyWindToObjects(dt); idleTimer += dt; if (pointer.down) idleTimer = 0; }
+    if (sceneState === 'playing') { applyWindToObjects(dt); spawnAmbient(dt); idleTimer += dt; if (pointer.down) idleTimer = 0; }
     if (currentLevel === 2) { // sky rainbow reveal
       let cloudMove = 0, clouds = 0;
       for (const o of objects) if (o.kind === 'cloud') { clouds++; cloudMove += o.reveal || 0; }
@@ -1496,6 +1747,8 @@ function frame(now) {
   }
 
   if (bookOpen) drawBook();
+  if (dailyActive) drawDaily(dt);
+  drawTransition();
   requestAnimationFrame(frame);
 }
 
@@ -1521,6 +1774,76 @@ const hintEl = document.getElementById('hint');
 let hintTimer = null;
 function showHint(text) { hintEl.textContent = text; hintEl.classList.add('show'); clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 3000); idleTimer = 0; }
 function hideHint() { hintEl.classList.remove('show'); }
+
+/* ============================================================================
+   DOM UI — mute button · parent screen · loading · daily · PWA manifest
+   ========================================================================== */
+const muteBtn = document.getElementById('muteBtn');
+const muteSvg = document.getElementById('muteSvg');
+const parentBtn = document.getElementById('parentBtn');
+const parentScreen = document.getElementById('parentScreen');
+const soundToggle = document.getElementById('soundToggle');
+const parentClose = document.getElementById('parentClose');
+
+const SPK     = '<path d="M4 9v6h4l5 4V5L8 9H4z" fill="#7a6a8a"/>';
+const WAVES   = '<path d="M15.5 8.8a5 5 0 0 1 0 6.4M18 6.5a8.5 8.5 0 0 1 0 11" fill="none" stroke="#7a6a8a" stroke-width="2" stroke-linecap="round"/>';
+const SPK_OFF = '<path d="M4 9v6h4l5 4V5L8 9H4z" fill="#c79797"/>';
+const XMARK   = '<path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="#c46a6a" stroke-width="2.2" stroke-linecap="round"/>';
+
+let muted = Progress.isMuted();
+function syncMute() {
+  Audio.setMuted(muted);
+  muteBtn.classList.toggle('muted', muted);
+  muteSvg.innerHTML = muted ? (SPK_OFF + XMARK) : (SPK + WAVES);
+  soundToggle.classList.toggle('on', !muted);
+}
+function toggleMute() { muted = !muted; Progress.setMuted(muted); syncMute(); if (!muted) Audio.sfx.click(); }
+muteBtn.addEventListener('click', (e) => { e.stopPropagation(); Audio.unlock(); toggleMute(); });
+soundToggle.addEventListener('click', (e) => { e.stopPropagation(); Audio.unlock(); toggleMute(); });
+parentBtn.addEventListener('click', (e) => { e.stopPropagation(); Audio.unlock(); Audio.sfx.click(); parentScreen.classList.add('show'); });
+parentClose.addEventListener('click', () => { Audio.sfx.click(); parentScreen.classList.remove('show'); });
+parentScreen.addEventListener('click', (e) => { if (e.target === parentScreen) parentScreen.classList.remove('show'); });
+syncMute();
+
+// daily reward — show once per calendar day (drawn on canvas beneath the loader)
+if (Progress.isNewDay()) dailyActive = true;
+
+// loading screen — fade out when key art is ready (or after a max wait)
+(function loader() {
+  const el = document.getElementById('loading');
+  if (!el) return;
+  const start = performance.now();
+  const KEY_IMGS = ['poppu-idle', 'bg-meadow', 'poppu-icon'];
+  const done = () => KEY_IMGS.filter(imgReady).length >= 2;
+  (function tick() {
+    const elapsed = performance.now() - start;
+    if (elapsed > 2600 || (elapsed > 900 && done())) {
+      el.classList.add('hide');
+      setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 600);
+      return;
+    }
+    requestAnimationFrame(tick);
+  })();
+})();
+
+// PWA install manifest, generated inline (no separate file needed)
+(function manifest() {
+  try {
+    const m = {
+      name: 'Poppu Blow', short_name: 'Poppu Blow',
+      display: 'standalone', orientation: 'any',
+      background_color: '#bfe6f5', theme_color: '#bfe6f5', start_url: '.',
+      icons: [
+        { src: 'assets/poppu-icon.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: 'assets/poppu-icon.png', sizes: '1024x1024', type: 'image/png', purpose: 'any maskable' }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(m)], { type: 'application/manifest+json' });
+    const link = document.createElement('link');
+    link.rel = 'manifest'; link.href = URL.createObjectURL(blob);
+    document.head.appendChild(link);
+  } catch (e) {}
+})();
 
 requestAnimationFrame(frame);
 

@@ -1,0 +1,13 @@
+.vercel
+
+# QA / tooling artifacts
+.playwright-mcp/
+*-prearts.png
+v5-*.png
+.DS_Store
+
+# Local planning / brief docs (working notes, not shipped)
+ART_PIPELINE_BRIEF.md
+GAMEPLAY_BRIEF.md
+REDESIGN_BRIEF.md
+V5_FINAL_BRIEF.md
