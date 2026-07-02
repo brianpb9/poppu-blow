@@ -224,7 +224,10 @@ const IMG_NAMES = [
   'sticker-1', 'sticker-2', 'sticker-3', 'sticker-4',
   'sticker-5', 'sticker-6', 'sticker-7', 'sticker-8'
 ];
-for (const n of IMG_NAMES) { const im = new Image(); im.src = 'assets/' + n + '.png'; IMG[n] = im; }
+// Painted full-screen backgrounds are stored as compressed JPEG (~0.3–0.6MB each);
+// everything else is PNG with clean alpha.
+const JPG_BG = new Set(['bg-garden','bg-beach','bg-forest','bg-ocean','bg-magic','bg-meadow','bg-sky']);
+for (const n of IMG_NAMES) { const im = new Image(); im.src = 'assets/' + n + (JPG_BG.has(n) ? '.jpg' : '.png'); IMG[n] = im; }
 function imgReady(name) { const i = IMG[name]; return !!(i && i.complete && i.naturalWidth > 0); }
 
 // Draw a sprite centered on the current transform origin.
@@ -257,10 +260,26 @@ function drawBGCover(name) {
 const Progress = (function () {
   const KEY = 'poppublow_v4';
   let data = { stars: {}, completed: {}, stickers: [], seenTutorial: false,
-               muted: false, lastLogin: null, bonus: 0 };
+               muted: false, lastLogin: null, bonus: 0, streak: 0, goldenSticker: false };
   try { const s = localStorage.getItem(KEY); if (s) data = Object.assign(data, JSON.parse(s)); } catch (e) {}
   function save() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} }
-  function today() { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+  function ymd(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+  function today() { return ymd(new Date()); }
+  function yesterday() { const d = new Date(); d.setDate(d.getDate() - 1); return ymd(d); }
+  // The streak that applies TODAY (consecutive day → +1, gap → reset to 1). Pure:
+  // reads lastLogin without mutating, so dailyInfo() and claimDaily() agree.
+  function pendingStreak() {
+    if (data.lastLogin === today()) return data.streak || 1;
+    if (data.lastLogin === yesterday()) return (data.streak || 0) + 1;
+    return 1;
+  }
+  // Reward tier cycles 1..7; Day7 is the special golden sticker, then it loops.
+  function computeInfo() {
+    const streak = pendingStreak();
+    const tier = ((streak - 1) % 7) + 1;
+    return { streak, tier, stars: tier <= 3 ? tier : 3,
+             special: tier === 7, hint: tier >= 4 && tier <= 6 };
+  }
   return {
     data,
     totalStars() { let t = 0; for (const k in data.stars) t += data.stars[k]; return t; },
@@ -278,9 +297,20 @@ const Progress = (function () {
     isMuted() { return !!data.muted; },
     setMuted(m) { data.muted = !!m; save(); },
     getBonus() { return data.bonus || 0; },
+    hasGoldenSticker() { return !!data.goldenSticker; },
     // returns true the first time it's called on a new calendar day
     isNewDay() { return data.lastLogin !== today(); },
-    claimDaily() { data.lastLogin = today(); data.bonus = (data.bonus || 0) + 1; save(); },
+    // reward details for today (does not mutate) — drives the streak popup
+    dailyInfo() { return computeInfo(); },
+    claimDaily() {
+      const info = computeInfo();
+      data.streak = info.streak;
+      data.lastLogin = today();
+      data.bonus = (data.bonus || 0) + info.stars;
+      if (info.special) data.goldenSticker = true;
+      save();
+      return info;
+    },
     save
   };
 })();
@@ -300,7 +330,7 @@ const Audio = (function () {
     try { ac = new (window.AudioContext || window.webkitAudioContext)(); }
     catch (e) { return; }
     master = ac.createGain(); master.gain.value = muted ? 0 : 0.85; master.connect(ac.destination);
-    musicGain = ac.createGain(); musicGain.gain.value = 0.9; musicGain.connect(master);
+    musicGain = ac.createGain(); musicGain.gain.value = 0.0001; musicGain.connect(master); // fades in on start
 
     const len = ac.sampleRate * 2;
     noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
@@ -376,8 +406,19 @@ const Audio = (function () {
     if (mi % 4 === 0) tone(root * Math.pow(2, (s - 12) / 12), 2.4, 'triangle', 0.03, { attack: 0.5, filter: 900, music: true });
     musicTimer = setTimeout(scheduleMusic, 1150);
   }
-  function startMusic() { if (!ready || musicOn) return; musicOn = true; scheduleMusic(); }
-  function stopMusic() { musicOn = false; if (musicTimer) clearTimeout(musicTimer); }
+  function startMusic() {
+    if (!ready || musicOn) return;
+    musicOn = true;
+    const t = ac.currentTime;
+    musicGain.gain.cancelScheduledValues(t);
+    musicGain.gain.setValueAtTime(Math.max(0.0001, musicGain.gain.value), t);
+    musicGain.gain.linearRampToValueAtTime(0.9, t + 2.0);   // gentle, non-jarring fade-in
+    scheduleMusic();
+  }
+  function stopMusic() {
+    musicOn = false; if (musicTimer) clearTimeout(musicTimer);
+    if (ready) { const t = ac.currentTime; musicGain.gain.cancelScheduledValues(t); musicGain.gain.setTargetAtTime(0.0001, t, 0.3); }
+  }
 
   const sfx = {
     seed()   { tone(rand(900,1300), 0.18, 'sine', 0.10, { attack: 0.005, glideTo: rand(1500,2200), filter: 4000 }); },
@@ -873,6 +914,28 @@ kindConfig.jellyfish = {
   draw(o) { const p = 1 + Math.sin(o.pulse) * 0.07; drawImg('jellyfish', 96 * p); }, cleared() { return false; }
 };
 
+// ---- RARE golden dandelion seed: a surprise "wow" collectible ----
+kindConfig.goldenseed = {
+  init(o) { o.mass = 0.5; o.drag = 0.97; o.wobSpeed = 3.2; o.size = 30; o.golden = true; o.glint = rand(0, TAU); o.twirl = rand(0, TAU); },
+  onWind(o, power) { o.vy -= power * 14; if (power > 0.3 && Math.random() < 0.25) Audio.sfx.seed(); },
+  update(o, dt) {
+    o.glint += dt * 4; o.twirl += dt * 2.4; o.vy -= 6 * dt;
+    o.vx += Math.cos(o.wob) * 16 * dt; o.vy += Math.sin(o.wob * 1.3) * 10 * dt;
+    // constant gold sparkle trail so it clearly reads as "special"
+    if (Math.random() < 0.65) addParticle({ type: 'star', x: o.x + rand(-11, 11), y: o.y + rand(-11, 11),
+      vx: rand(-16, 16), vy: rand(-16, 16), life: 1, decay: 1.5, r: rand(2.5, 5),
+      color: pick(['#ffe08a', '#fff3b0', '#ffd54a']), rot: rand(0, TAU), spin: rand(-6, 6) });
+  },
+  draw(o) {
+    const p = 0.9 + Math.sin(o.glint) * 0.14;
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 42 * p);
+    g.addColorStop(0, 'rgba(255,225,120,0.9)'); g.addColorStop(1, 'rgba(255,225,120,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 42 * p, 0, TAU); ctx.fill();
+    ctx.rotate(Math.sin(o.twirl) * 0.4);
+    if (!drawImg('dandelion-seed', 64 * p)) drawStar(0, 0, 18 * p, '#ffd54a');
+  }, cleared() { return false; }
+};
+
 // dandelion seed that flies off
 function spawnSeedFly(x, y, wvx, wvy) {
   const a = Math.atan2(wvy, wvx) + rand(-0.6, 0.6);
@@ -891,15 +954,18 @@ function clearShadow() { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ct
 /* ============================================================================
    POPPU MASCOT
    ========================================================================== */
-const poppu = { x: 0, y: 0, size: 74, mood: 'idle', bounce: 0, blink: 0, blinkT: rand(2, 5), excite: 0, cheer: 0, t: 0, armWave: 0 };
+const poppu = { x: 0, y: 0, size: 74, mood: 'idle', bounce: 0, blink: 0, blinkT: rand(2, 5), excite: 0, cheer: 0, t: 0, armWave: 0, lean: 0 };
 function updatePoppu(dt) {
   poppu.t += dt;
-  poppu.size = clamp(Math.min(W, H) * 0.11, 56, 96);
-  const margin = poppu.size * 0.9;
+  poppu.size = clamp(Math.min(W, H) * 0.138, 70, 120);   // ~25% bigger corner presence
+  const margin = poppu.size * 0.82;
   poppu.x = W - margin; poppu.y = H - margin * 0.85;
   poppu.blinkT -= dt;
   if (poppu.blinkT <= 0) { poppu.blink = 1; poppu.blinkT = rand(2.5, 5.5); }
   if (poppu.blink > 0) poppu.blink = Math.max(0, poppu.blink - dt * 7);
+  // lean with the wind: ease toward the drag's horizontal direction while blowing
+  const targetLean = (pointer.down && pointer.speed > 60) ? clamp(pointer.vx * 0.00055, -0.32, 0.32) : 0;
+  poppu.lean = lerp(poppu.lean, targetLean, 0.12);
   poppu.excite = Math.max(0, poppu.excite - dt * 0.8);
   poppu.cheer = Math.max(0, poppu.cheer - dt);
   if (poppu.cheer > 0) poppu.mood = 'celebrate';
@@ -914,13 +980,17 @@ function poppuCelebrate() { poppu.cheer = 2.4; }
 function drawPoppu() {
   const s = poppu.size / 74;
   const by = poppu.bounce * (poppu.mood === 'celebrate' ? 14 : poppu.mood === 'excited' ? 8 : 3);
-  const breathe = poppu.mood === 'idle' ? 1 + Math.sin(poppu.t * 2.2) * 0.03 : 1;
+  // gentle idle breathing pulse + a quick vertical "blink" squash
+  const breathe = poppu.mood === 'idle' ? 1 + Math.sin(poppu.t * 2.2) * 0.035 : 1;
+  const blinkSq = 1 - poppu.blink * 0.11;
   ctx.save();
   ctx.translate(poppu.x, poppu.y + by); ctx.scale(s, s);
+  // grounded shadow (doesn't lean with the body)
   ctx.globalAlpha = 0.16; ctx.fillStyle = '#3a3a5a';
   ctx.beginPath(); ctx.ellipse(0, 46 - by * 0.4, 42, 10, 0, 0, TAU); ctx.fill();
   ctx.globalAlpha = 1;
-  const squash = poppu.mood === 'celebrate' ? 1 + poppu.bounce * 0.06 : breathe;
+  ctx.rotate(poppu.lean);                                  // lean into the wind
+  const squash = (poppu.mood === 'celebrate' ? 1 + poppu.bounce * 0.06 : breathe) * blinkSq;
   ctx.scale(1 / squash, squash);
   const celebrate = poppu.mood === 'celebrate';
   const poppuImg = celebrate ? 'poppu-celebrate' : poppu.mood === 'excited' ? 'poppu-excited' : 'poppu-idle';
@@ -966,6 +1036,7 @@ let celebrateT = 0, rewardT = 0, newStickerId = 0;
 let rainbowReveal = 0;
 let bgClouds = [], flowers = [];
 let tutorial = null;
+let goldenTimer = 0;               // rare golden-seed spawn timer (per level)
 
 function initBGDecor() {
   bgClouds = [];
@@ -995,7 +1066,7 @@ function loadLevel(i) {
   currentLevel = clamp(i, 0, LEVELS.length - 1);
   objects = []; particles.length = 0; trail.length = 0;
   clearedCount = 0; starsThisLevel = 0; rainbowReveal = 0;
-  sceneState = 'playing'; celebrateT = 0; rewardT = 0;
+  sceneState = 'playing'; celebrateT = 0; rewardT = 0; goldenTimer = 0;
   initBGDecor();
   spawnKinds(LEVELS[currentLevel].spawn);
   spawnStars(3);
@@ -1157,12 +1228,29 @@ function applyWindToObjects(dt) {
    ========================================================================== */
 function onObjectCleared(o) {
   const cx = clamp(o.x, 0, W), cy = clamp(o.y, 0, H);
+  if (o.golden) { goldenSeedReward(cx, cy); o.alive = false; return; }
   if (o.isStar) { collectStar(cx, cy); o.alive = false; return; }
   const col = o.color || '#fff';
   burst(cx, cy, typeof col === 'string' && col[0] === '#' ? col : '#fff', 10, { min: 40, max: 180, twinkle: true, rMin: 3, rMax: 7, grav: 30 });
   poppuReact(0.6);
   if (o.counts) { clearedCount++; Audio.sfx.giggle(); checkSceneClear(); }
   o.alive = false;
+}
+// Blowing the rare golden seed off-screen = a big surprise payoff.
+function goldenSeedReward(x, y) {
+  for (let i = 0; i < 3; i++) {                 // three staggered confetti bursts
+    setTimeout(() => {
+      const bx = clamp(x + rand(-70, 70), 24, W - 24), by = clamp(y + rand(-50, 40), 24, H - 24);
+      for (let k = 0; k < 14; k++) addParticle({ type: 'confetti', x: bx, y: by,
+        vx: rand(-170, 170), vy: rand(-240, -40), life: 1, decay: rand(0.4, 0.7), r: rand(4, 8),
+        color: pick(CONFETTI_COLORS), grav: 230, airDrag: 0.99, rot: rand(0, TAU), spin: rand(-10, 10) });
+      Audio.sfx.pop();
+    }, i * 130);
+  }
+  burst(x, y, '#ffe08a', 22, { min: 80, max: 320, twinkle: true, rMin: 3, rMax: 7, grav: 20 });
+  Audio.chime(784, [0, 4, 7, 12, 16], 0.17);    // bright, special "rare" chime
+  poppuReact(1.4);
+  showHint('✨ Rare! ✨');
 }
 function collectStar(x, y) {
   starsThisLevel = Math.min(3, starsThisLevel + 1);
@@ -1220,8 +1308,8 @@ const ui = { mapNodes: [], bookIcon: null, homeBtn: null, playBtn: null };
 let screenT = 0;
 const RES = 54;                    // reserved corner space for the DOM mute/parent buttons
 
-// daily-reward popup
-let dailyActive = false, dailyT = 0;
+// daily-reward popup (+ streak details for the current day)
+let dailyActive = false, dailyT = 0, dailyReward = null;
 // scene crossfade transition
 const trans = { active: false, t: 0, half: false, cb: null };
 const TRANS_HALF = 0.26;
@@ -1316,15 +1404,21 @@ function drawBrandTitle(cx, cy) {
   const spacing = fs * 0.02;
   const total = widths.reduce((a, b) => a + b, 0) + spacing * (letters.length - 1);
   let x = cx - total / 2;
-  const brand = ['#ff8fb8', '#7ec8f0', '#ffd166']; // pink · sky · sunny — Poppu World
+  // Strict 3-colour Poppu-World palette: cream outline, mint + warm-pink fills.
+  const CREAM = '#F6EAD6', FILLS = ['#B7E0C9', '#FFB6C1']; // mint · warm pink
+  let li = 0; // fill index advances only on visible letters (so P-o-p-p-u alternate cleanly)
   for (let i = 0; i < letters.length; i++) {
     const ch = letters[i], w = widths[i];
     if (ch === ' ') { x += w + spacing; continue; }
     const lx = x + w / 2, ly = cy + Math.sin(screenT * 2 + i * 0.5) * 4;
-    const col = brand[i % brand.length];
+    const fill = FILLS[li % FILLS.length]; li++;
     ctx.save(); ctx.translate(lx, ly); ctx.rotate(Math.sin(i * 1.3) * 0.05);
-    ctx.lineJoin = 'round'; ctx.lineWidth = fs * 0.16; ctx.strokeStyle = col; ctx.strokeText(ch, 0, 0);
-    softShadow('rgba(120,90,150,0.28)', 6, 0, 3); ctx.fillStyle = '#ffffff'; ctx.fillText(ch, 0, 0); clearShadow();
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    // soft violet drop for depth, then chunky cream candy outline, then pastel fill
+    softShadow('rgba(120,90,150,0.28)', 7, 0, 4);
+    ctx.lineWidth = fs * 0.22; ctx.strokeStyle = CREAM; ctx.strokeText(ch, 0, 0); clearShadow();
+    ctx.lineWidth = fs * 0.22; ctx.strokeStyle = CREAM; ctx.strokeText(ch, 0, 0); // second pass = solid cream edge
+    ctx.fillStyle = fill; ctx.fillText(ch, 0, 0);
     ctx.restore();
     x += w + spacing;
   }
@@ -1619,43 +1713,74 @@ function drawReward(dt) {
   ctx.restore();
 }
 
-/* ---- daily-reward popup (Poppu holding a big gold star) ---- */
+/* ---- daily-reward popup (streak-based: Poppu brings 1–3 stars, Day 7 = golden) ---- */
 function drawDaily(dt) {
   dailyT += dt;
-  const cx = W / 2, cy = H * 0.52;
+  const info = dailyReward || { streak: 1, tier: 1, stars: 1, special: false, hint: false };
+  const cx = W / 2, cy = H * 0.54;
   ctx.save();
   ctx.fillStyle = 'rgba(40,30,60,0.6)'; ctx.fillRect(0, 0, W, H);
   const pop = clamp(easeOutBack(clamp(dailyT / 0.5, 0, 1)), 0, 1.15);
-  const sr = clamp(Math.min(W, H) * 0.1, 50, 110);
+  const sr = clamp(Math.min(W, H) * 0.08, 40, 92);
   const pulse = 1 + Math.sin(dailyT * 3) * 0.06;
   ctx.save(); ctx.translate(cx, cy); ctx.scale(pop, pop);
-  // star glow
-  const starY = -sr * 1.1;
-  const g = ctx.createRadialGradient(0, starY, 0, 0, starY, sr * 2.4);
-  g.addColorStop(0, 'rgba(255,240,150,0.85)'); g.addColorStop(1, 'rgba(255,240,150,0)');
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, starY, sr * 2.4, 0, TAU); ctx.fill();
-  // big gold star
-  ctx.save(); ctx.translate(0, starY); ctx.rotate(Math.sin(dailyT * 1.4) * 0.1);
-  drawStar(0, 0, sr * pulse, '#ffcf3f'); drawStar(0, 0, sr * 0.62 * pulse, '#fff2b0');
-  ctx.restore();
-  // Poppu below, reaching up to the star
-  const ps = clamp(Math.min(W, H) * 0.28, 120, 240);
-  ctx.save(); ctx.translate(0, sr * 0.7 + Math.sin(dailyT * 3) * 4);
+  const rowY = -sr * 1.35;
+  if (info.special) {
+    // ---- Day 7: one big GOLDEN reward badge ----
+    const gr = sr * 1.55 * pulse;
+    const g = ctx.createRadialGradient(0, rowY, 0, 0, rowY, gr * 1.7);
+    g.addColorStop(0, 'rgba(255,225,120,0.95)'); g.addColorStop(1, 'rgba(255,225,120,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, rowY, gr * 1.7, 0, TAU); ctx.fill();
+    // sparkle ring
+    for (let k = 0; k < 8; k++) {
+      const a = dailyT * 1.2 + k * (TAU / 8), rr = gr * 1.35;
+      ctx.save(); ctx.translate(Math.cos(a) * rr, rowY + Math.sin(a) * rr); ctx.rotate(a);
+      drawStar(0, 0, sr * 0.16 * (0.7 + Math.abs(Math.sin(dailyT * 3 + k)) * 0.6), '#fff3b0', 4); ctx.restore();
+    }
+    ctx.save(); ctx.translate(0, rowY); ctx.rotate(Math.sin(dailyT * 1.4) * 0.1);
+    drawStar(0, 0, gr, '#ffcf3f', 6); drawStar(0, 0, gr * 0.6, '#fff2b0', 6);
+    ctx.restore();
+  } else {
+    // ---- Day 1–6: a row of 1–3 gold stars ----
+    const n = clamp(info.stars, 1, 3);
+    const gap = sr * 1.15, x0 = -((n - 1) * gap) / 2;
+    for (let i = 0; i < n; i++) {
+      const px = x0 + i * gap;
+      const t = clamp((dailyT - 0.25 - i * 0.14) / 0.3, 0, 1);
+      const sc = easeOutBack(t) * pulse;
+      const gg = ctx.createRadialGradient(px, rowY, 0, px, rowY, sr * 1.6);
+      gg.addColorStop(0, 'rgba(255,240,150,0.8)'); gg.addColorStop(1, 'rgba(255,240,150,0)');
+      ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(px, rowY, sr * 1.6, 0, TAU); ctx.fill();
+      ctx.save(); ctx.translate(px, rowY); ctx.scale(sc, sc); ctx.rotate(Math.sin(dailyT * 1.4 + i) * 0.08);
+      drawStar(0, 0, sr, '#ffcf3f'); drawStar(0, 0, sr * 0.62, '#fff2b0'); ctx.restore();
+    }
+  }
+  // Poppu below, cheering
+  const ps = clamp(Math.min(W, H) * 0.26, 110, 220);
+  ctx.save(); ctx.translate(0, sr * 0.9 + Math.sin(dailyT * 3) * 4);
   if (!drawImg('poppu-celebrate', ps, -4)) if (!drawImg('poppu-idle', ps, -4)) { drawStar(0, 0, ps * 0.2, '#ff9e6b'); }
   ctx.restore();
   ctx.restore();
-  // headline
-  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  // headline: streak counter
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   softShadow('rgba(120,90,150,0.45)', 8, 0, 3);
-  const fs = clamp(Math.min(W, H) * 0.052, 21, 38);
+  const fs = clamp(Math.min(W, H) * 0.056, 22, 40);
   ctx.font = `900 ${fs}px "Trebuchet MS", sans-serif`;
-  ctx.fillText('Poppu brought you', cx, H * 0.17);
-  ctx.fillText('a star!', cx, H * 0.17 + fs * 1.15);
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Day ' + info.streak + ' streak! 🔥', cx, H * 0.15);
+  // subtitle by tier
+  const sub = info.special ? 'Golden surprise! ✨'
+            : info.hint    ? 'Keep going — Day 7 is golden!'
+            : 'Poppu brought you ' + info.stars + (info.stars === 1 ? ' star!' : ' stars!');
+  ctx.font = `bold ${clamp(Math.min(W, H) * 0.036, 15, 22)}px "Trebuchet MS", sans-serif`;
+  ctx.fillStyle = info.special ? '#ffe9a8' : '#fff';
+  ctx.fillText(sub, cx, H * 0.15 + fs * 1.05);
   clearShadow();
   if (dailyT > 0.8) {
     ctx.globalAlpha = 0.55 + Math.sin(dailyT * 3) * 0.35;
+    ctx.fillStyle = '#fff';
     ctx.font = `bold ${clamp(Math.min(W, H) * 0.035, 15, 20)}px "Trebuchet MS", sans-serif`;
-    ctx.fillText('tap to collect ▶', cx, H * 0.86); ctx.globalAlpha = 1;
+    ctx.fillText('tap to collect ▶', cx, H * 0.88); ctx.globalAlpha = 1;
   }
   ctx.restore();
 }
@@ -1670,7 +1795,13 @@ function onDown(e) {
   Audio.unlock();
   const p = screenPos(e);
   // daily reward: tap anywhere to collect
-  if (dailyActive) { dailyActive = false; Progress.claimDaily(); Audio.sfx.star(); return; }
+  if (dailyActive) {
+    dailyActive = false;
+    const info = Progress.claimDaily();
+    if (info && info.special) { Audio.sfx.celebrate(); spawnConfettiRain(28); poppuCelebrate(); }
+    else Audio.sfx.star();
+    return;
+  }
   if (bookOpen) { bookOpen = false; Audio.sfx.click(); return; }
   if (gameScreen === 'title') { Audio.startMusic(); startTransition(() => { gameScreen = 'map'; }); return; }
   if (gameScreen === 'map') {
@@ -1710,6 +1841,21 @@ function startLevel(i) {
   setTimeout(() => { if (gameScreen === 'play' && !tutorial) showHint('✋ Drag to make wind!'); }, 700);
 }
 
+// Every 15s, a 10% chance to release a single rare golden seed (one at a time).
+function spawnGoldenSeed() {
+  const o = new Obj('goldenseed', rand(W * 0.28, W * 0.72), rand(H * 0.4, H * 0.68));
+  o.counts = false; objects.push(o);
+  showHint('✨ A rare golden seed!');
+  Audio.chime(660, [0, 7, 12], 0.1);
+}
+function maybeSpawnGolden(dt) {
+  goldenTimer += dt;
+  if (goldenTimer < 15) return;
+  goldenTimer = 0;
+  if (objects.some(o => o.kind === 'goldenseed' && !o.gone)) return;  // only one at a time
+  if (Math.random() < 0.10) spawnGoldenSeed();
+}
+
 /* ============================================================================
    MAIN LOOP
    ========================================================================== */
@@ -1725,7 +1871,7 @@ function frame(now) {
   else if (gameScreen === 'map') { drawMap(dt); }
   else { // play
     updatePointer(dt); updatePoppu(dt);
-    if (sceneState === 'playing') { applyWindToObjects(dt); spawnAmbient(dt); idleTimer += dt; if (pointer.down) idleTimer = 0; }
+    if (sceneState === 'playing') { applyWindToObjects(dt); spawnAmbient(dt); maybeSpawnGolden(dt); idleTimer += dt; if (pointer.down) idleTimer = 0; }
     if (currentLevel === 2) { // sky rainbow reveal
       let cloudMove = 0, clouds = 0;
       for (const o of objects) if (o.kind === 'cloud') { clouds++; cloudMove += o.reveal || 0; }
@@ -1806,7 +1952,7 @@ parentScreen.addEventListener('click', (e) => { if (e.target === parentScreen) p
 syncMute();
 
 // daily reward — show once per calendar day (drawn on canvas beneath the loader)
-if (Progress.isNewDay()) dailyActive = true;
+if (Progress.isNewDay()) { dailyActive = true; dailyReward = Progress.dailyInfo(); }
 
 // loading screen — fade out when key art is ready (or after a max wait)
 (function loader() {
